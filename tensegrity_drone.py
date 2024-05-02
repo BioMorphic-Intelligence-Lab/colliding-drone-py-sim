@@ -6,12 +6,15 @@ import matplotlib.pyplot as plt
 
 class TensegrityDrone(object):
 
-    def __init__(self, l=1.0, g=9.81, th=1, yd=1.0, m=1.0, p=[0, 0, 0], plot=False) -> None:
+    def __init__(self, p=[0.0, 0.0, 0.0], angles=[0.0, 0.0, 0.0],
+                 l=0.22, g=9.81, th=7.50e-8, yd=0.009975,
+                 m=0.315, I=[6.21e-4, 9.62e-4, 9.22e-4],
+                 plot=False) -> None:
 
         # Pose
         self.position = np.array(p)
         self.orientation = R.from_euler(seq='xyz',
-                                        angles=[0.0, 0.0, 0.0])
+                                        angles=angles)
         
         # Completed trajectory
         self.position_hist = np.array([p[0:3]])
@@ -26,9 +29,7 @@ class TensegrityDrone(object):
 
         # Inertial parameters
         self.m = m         # total mass
-        self.I = 1/12 * m * np.array([(l+0.1*l)**2,
-                                      (l+0.1*l)**2,
-                                      (2*l)**2])   # Diagonal elements of the inertia tensor of a flat (square) plate      
+        self.I = np.array(I)   # Diagonal elements of the inertia tensor of a flat (square) plate      
         
         # Length of rods
         self.l = l
@@ -50,24 +51,27 @@ class TensegrityDrone(object):
                                     [0.50, 0.25, 1.00], 
                                     [0.50, 0.75, 0.00], 
                                     [0.50, 0.75, 1.00]
-                                ])  - 0.5)
+                                ]) - 0.5)
         self.vertices = self.orientation.apply(self.vertices_nominal) + self.position
         
-        assert(np.linalg.norm(self.vertices[0]-self.vertices[2]) == 0.5 * l)
-        assert(np.linalg.norm(self.vertices[2]-self.vertices[3]) == l)
+        assert np.abs(np.linalg.norm(self.vertices[0]-self.vertices[2]) - 0.5*l) <= 1e-7, \
+              f"Distance should be {0.5 * l} but is {np.linalg.norm(self.vertices[0]-self.vertices[2])}"
+        assert np.abs(np.linalg.norm(self.vertices[2]-self.vertices[3]) - l) <= 1e-7, \
+              f"Distance should be {l} but is {np.linalg.norm(self.vertices[2]-self.vertices[3])}"
 
         # Locations of propellers w.r.t. the centroid
-        self.propellers =  self.orientation.apply([
-            [0.25 * l, 0.25 * l, 0.05 * l],
-            [0.25 * l, -0.25 * l, 0.05 * l],
-            [-0.25 * l, 0.25 * l, 0.05 * l],
-            [-0.25 * l, -0.25 * l, 0.05 * l]
-        ]) + self.position
+        self.propllers_nominal = np.array([
+            [ 0.0525,  0.040, 0.0],
+            [ 0.0525, -0.040, 0.0],
+            [-0.0525,  0.040, 0.0],
+            [-0.0525, -0.040, 0.0]
+        ])
+        self.propellers =  self.orientation.apply(self.propllers_nominal) + self.position
 
         # The resulting mapping matrix for rotational accelerations
         self.rotational_acc_mat = np.array([[-0.25 * l / self.I[0], 0.25 * l / self.I[0], 0.25 * l / self.I[0], -0.25 * l / self.I[0]], # roll
                                             [-0.25 * l / self.I[1], 0.25 * l / self.I[1], -0.25 * l / self.I[1], 0.25 * l / self.I[1]], # pitch
-                                            [-0.25 * l * yd / self.I[2], -0.25 * l * yd / self.I[2], 0.25 * l * yd / self.I[2], 0.25 * l * yd / self.I[2]]  # yaw
+                                            [- yd / self.I[2], -yd / self.I[2],  yd / self.I[2],  yd / self.I[2]]  # yaw
                                             ])
 
         # Strings indeces (for visualization only)
@@ -121,9 +125,9 @@ class TensegrityDrone(object):
                                                       self.r * np.cos(tau),
                                                       np.zeros_like(tau)]).T) \
                         + self.propellers[i, :]
-            self.ax.plot(circle[:, 0] + self.position[0],
-                         circle[:, 1] + self.position[1],
-                         circle[:, 2] + self.position[2], color="red")
+            self.ax.plot(circle[:, 0],
+                         circle[:, 1],
+                         circle[:, 2], color="red")
 
         # Plot the carbon fibre rods
         for i in range(0, 11, 2):
@@ -143,6 +147,9 @@ class TensegrityDrone(object):
         self.ax.set_xlabel(f"x [m]")
         self.ax.set_ylabel(f"y [m]")
         self.ax.set_zlabel(f"z [m]")
+
+        # For equal aspect ratio
+        self.ax.set_box_aspect([ub - lb for lb, ub in (getattr(self.ax, f'get_{a}lim')() for a in 'xyz')])
 
     def get_A(self, x):
         """ Returns the matrix for the state x that maps control inputs 
@@ -185,7 +192,10 @@ class TensegrityDrone(object):
     def set_pose(self, p: np.array) -> None:
         self.position = p[0:3]
         self.orientation = R.from_euler("xyz", p[3:6])
+
         self.vertices = self.orientation.apply(self.vertices_nominal) + self.position
+        self.propellers = self.orientation.apply(self.propllers_nominal) + self.position
+
         self.position_hist = np.append(self.position_hist, [self.position], axis=0)
 
     def set_limits(self, xlim: tuple, ylim: tuple, zlim: tuple) -> None:
