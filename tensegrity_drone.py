@@ -6,16 +6,26 @@ import matplotlib.pyplot as plt
 
 class TensegrityDrone(object):
 
-    def __init__(self, l=1.0, m=1.0, I=0.1, p=[0, 0, 0]) -> None:
+    def __init__(self, l=1.0, g=9.81, th=1, yd=1.0, m=1.0, p=[0, 0, 0], plot=False) -> None:
 
         # Pose
         self.position = np.array(p)
         self.orientation = R.from_euler(seq='xyz',
-                                        angles=[0.0, np.pi/4, 0.0])
+                                        angles=[0.0, 0.0, 0.0])
         
+        # Gravity constant
+        self.g = g
+
+        # Speed^2 to Thrust constant
+        self.th = th
+        # Speed^2 to Yaw moment constant
+        self.yd = yd
+
         # Inertial parameters
-        self.m = m 
-        self.I = I
+        self.m = m         # total mass
+        self.I = 1/12 * m * np.array([(l+0.1*l)**2,
+                                      (l+0.1*l)**2,
+                                      (2*l)**2])   # Diagonal elements of the inertia tensor of a flat (square) plate      
         
         # Length of rods
         self.l = l
@@ -43,12 +53,18 @@ class TensegrityDrone(object):
         assert(np.linalg.norm(self.vertices[2]-self.vertices[3]) == l)
 
         # Locations of propellers w.r.t. the centroid
-        self.propellers =  self.orientation.apply(np.array([
+        self.propellers =  self.orientation.apply([
             [0.25 * l, 0.25 * l, 0.05 * l],
             [0.25 * l, -0.25 * l, 0.05 * l],
             [-0.25 * l, 0.25 * l, 0.05 * l],
             [-0.25 * l, -0.25 * l, 0.05 * l]
-        ])) + self.position
+        ]) + self.position
+
+        # The resulting mapping matrix for rotational accelerations
+        self.rotational_acc_mat = np.array([[-0.25 * l / self.I[0], 0.25 * l / self.I[0], 0.25 * l / self.I[0], -0.25 * l / self.I[0]], # roll
+                                            [-0.25 * l / self.I[1], 0.25 * l / self.I[1], -0.25 * l / self.I[1], 0.25 * l / self.I[1]], # pitch
+                                            [-0.25 * l * yd / self.I[2], -0.25 * l * yd / self.I[2], 0.25 * l * yd / self.I[2], 0.25 * l * yd / self.I[2]]  # yaw
+                                            ])
 
         # Strings indeces (for visualization only)
         self.strings = [ 
@@ -61,8 +77,9 @@ class TensegrityDrone(object):
                     ]
         
         # Setting up plotting stuff
-        self.fig = plt.figure()
-        self.ax = self.fig.add_subplot(projection='3d')
+        if plot:
+            self.fig = plt.figure()
+            self.ax = self.fig.add_subplot(projection='3d')
 
     def plot_tensegrity_drone(self) -> None:
         self.ax.clear()
@@ -109,7 +126,6 @@ class TensegrityDrone(object):
 
         self.set_axes_equal(self.ax)
 
-
     def set_axes_equal(self, ax):
         """
         Make axes of 3D plot have equal scale so that spheres appear as spheres,
@@ -137,6 +153,44 @@ class TensegrityDrone(object):
         ax.set_xlim3d([x_middle - plot_radius, x_middle + plot_radius])
         ax.set_ylim3d([y_middle - plot_radius, y_middle + plot_radius])
         ax.set_zlim3d([z_middle - plot_radius, z_middle + plot_radius])
+
+    def get_A(self, x):
+        """ Returns the matrix for the state x that maps control inputs 
+            u to state accelerations x_ddot. In this case 6 x 4 matrix.
+            (Positional accelerations + Rotational Accelerations x 4 actuation forces) """
+        
+        orientation = R.from_euler(seq='xyz',
+                                   angles=x[3:6])
+        linear_acc_mat = 1.0 / self.m * orientation.apply([0.0, 0.0, 1.0]).T
+
+        return np.concatenate((np.array(4 * [linear_acc_mat]).T,
+                               self.rotational_acc_mat))
+
+    def dynamics(self, x, u, f_ext=np.array([0,0,0]), tau_ext=np.array([0, 0, 0]),
+                 update_internal_state=False) -> np.array:
+        
+        if update_internal_state:
+            self.position = x[0:3]
+            self.orientation = R.from_euler(seq='xyz',
+                                            angles=x[3:6])
+
+        # Init the derivative array
+        x_ddot = np.array([
+                            0, 0, 0, # Positional derivatives
+                            0, 0, 0  # Rotational derivatives
+                        ], dtype=float)
+        
+        # Add the actuation contribution
+        x_ddot += self.get_A(x) @ (self.th * u**2) 
+
+        # Add gravity contribution
+        x_ddot += np.array([0, 0, -self.g,
+                            0, 0, 0])
+        
+        # Add external forces and torques contribution
+        x_ddot += np.concatenate((f_ext / self.m, tau_ext / self.I))
+
+        return x_ddot
 
 
     def save(self, name: str) -> None:
