@@ -37,7 +37,7 @@ class TensegrityDrone(object):
         self.r  = 0.1*l
 
         # Vertices of the icosahedron w.r.t. its centroid
-        self.vertices = self.orientation.apply(l * (np.array([
+        self.vertices_nominal = l * (np.array([
                                     [0.00, 0.50, 0.25], 
                                     [1.00, 0.50, 0.25],
                                     [0.00, 0.50, 0.75], 
@@ -50,7 +50,8 @@ class TensegrityDrone(object):
                                     [0.50, 0.25, 1.00], 
                                     [0.50, 0.75, 0.00], 
                                     [0.50, 0.75, 1.00]
-                                ])  - 0.5))   + self.position
+                                ])  - 0.5)
+        self.vertices = self.orientation.apply(self.vertices_nominal) + self.position
         
         assert(np.linalg.norm(self.vertices[0]-self.vertices[2]) == 0.5 * l)
         assert(np.linalg.norm(self.vertices[2]-self.vertices[3]) == l)
@@ -87,6 +88,7 @@ class TensegrityDrone(object):
     def plot_tensegrity_drone(self) -> None:
         self.ax.clear()
 
+        # Plot the CoM
         self.ax.scatter(self.position[0],
                         self.position[1],
                         self.position[2], 
@@ -97,17 +99,25 @@ class TensegrityDrone(object):
                      self.position[2]+0.01,
                      f"CoM")
 
-        self.ax.scatter(self.vertices[:,0] + self.position[0], 
-                        self.vertices[:,1] + self.position[1], 
-                        self.vertices[:,2] + self.position[2])
-        
+        # Plot all the tensegrity vertices
+        self.ax.scatter(self.vertices[:,0], 
+                        self.vertices[:,1], 
+                        self.vertices[:,2])
+        for i in range(len(self.vertices)):
+            self.ax.text(self.vertices[i, 0], 
+                         self.vertices[i, 1], 
+                         self.vertices[i, 2], 
+                         rf"$v_{{{i+1}}}$")
+            
+        # Plot the trajectory of the CoM
         self.ax.plot(self.position_hist[:, 0],
                      self.position_hist[:, 1],
                      self.position_hist[:, 2], color="orange")
 
+        # Plot the Propellors
         for i in range(len(self.propellers)):
             tau = np.linspace(-np.pi, np.pi, 25)
-            circle = self.orientation.apply(np.array([self.r *np.sin(tau),
+            circle = self.orientation.apply(np.array([self.r * np.sin(tau),
                                                       self.r * np.cos(tau),
                                                       np.zeros_like(tau)]).T) \
                         + self.propellers[i, :]
@@ -115,57 +125,24 @@ class TensegrityDrone(object):
                          circle[:, 1] + self.position[1],
                          circle[:, 2] + self.position[2], color="red")
 
-        for i in range(len(self.vertices)):
-            self.ax.text(self.vertices[i, 0] + self.position[0], 
-                         self.vertices[i, 1] + self.position[1], 
-                         self.vertices[i, 2] + self.position[2], 
-                         rf"$v_{{{i+1}}}$")
-
+        # Plot the carbon fibre rods
         for i in range(0, 11, 2):
             segment = np.array([self.vertices[i,:],self.vertices[i+1,:]])
-            self.ax.plot(segment[:,0] + self.position[0],
-                         segment[:,1] + self.position[1],
-                         segment[:,2] + self.position[2], color="black")
+            self.ax.plot(segment[:,0],
+                         segment[:,1],
+                         segment[:,2], color="black")
 
+        # Plot the strings
         for idx in self.strings:
             string = np.array([self.vertices[idx[0],:], self.vertices[idx[1], :]])
-            self.ax.plot(string[:,0] + self.position[0],
-                         string[:,1] + self.position[1],
-                         string[:,2] + self.position[2], color="grey")
+            self.ax.plot(string[:,0],
+                         string[:,1],
+                         string[:,2], color="grey")
 
+        # Set labels
         self.ax.set_xlabel(f"x [m]")
         self.ax.set_ylabel(f"y [m]")
         self.ax.set_zlabel(f"z [m]")
-
-        self.set_axes_equal(self.ax)
-
-    def set_axes_equal(self, ax):
-        """
-        Make axes of 3D plot have equal scale so that spheres appear as spheres,
-        cubes as cubes, etc.
-
-        Input
-        ax: a matplotlib axis, e.g., as output from plt.gca().
-        """
-
-        x_limits = ax.get_xlim3d()
-        y_limits = ax.get_ylim3d()
-        z_limits = ax.get_zlim3d()
-
-        x_range = abs(x_limits[1] - x_limits[0])
-        x_middle = np.mean(x_limits)
-        y_range = abs(y_limits[1] - y_limits[0])
-        y_middle = np.mean(y_limits)
-        z_range = abs(z_limits[1] - z_limits[0])
-        z_middle = np.mean(z_limits)
-
-        # The plot bounding box is a sphere in the sense of the infinity
-        # norm, hence I call half the max range the plot radius.
-        plot_radius = 0.5*max([x_range, y_range, z_range])
-
-        ax.set_xlim3d([x_middle - plot_radius, x_middle + plot_radius])
-        ax.set_ylim3d([y_middle - plot_radius, y_middle + plot_radius])
-        ax.set_zlim3d([z_middle - plot_radius, z_middle + plot_radius])
 
     def get_A(self, x):
         """ Returns the matrix for the state x that maps control inputs 
@@ -208,6 +185,7 @@ class TensegrityDrone(object):
     def set_pose(self, p: np.array) -> None:
         self.position = p[0:3]
         self.orientation = R.from_euler("xyz", p[3:6])
+        self.vertices = self.orientation.apply(self.vertices_nominal) + self.position
         self.position_hist = np.append(self.position_hist, [self.position], axis=0)
 
     def set_limits(self, xlim: tuple, ylim: tuple, zlim: tuple) -> None:

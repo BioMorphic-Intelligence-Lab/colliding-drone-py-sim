@@ -6,15 +6,19 @@ def main():
     drone = TensegrityDrone(plot=True)
 
     # Define the example trajectory
-    t = np.linspace(0, 10, 1000)
+    t = np.linspace(0, 10, 100)
     trajectory = np.zeros([len(t), 6])
     trajectory[:, 0] = np.linspace(0, 2, len(t))
+    trajectory[:, 1] = np.linspace(0, 2, len(t))
+    trajectory[:, 2] = np.linspace(0, 2, len(t))
+    trajectory[:, 3] = np.linspace(0, np.pi / 4, len(t))
 
     # Read out the limits for plotting
-    lower_limit = min(trajectory[:,0:3].flatten()) - 0.25
-    upper_limit = max(trajectory[:,0:3].flatten()) + 0.25
+    lower_limit = min(trajectory[:,0:3].flatten()) - 0.5
+    upper_limit = max(trajectory[:,0:3].flatten()) + 0.5
 
     # Loop through the trajectory and save a frame for each point
+    print()
     for i in range(len(t)):
         drone.set_pose(trajectory[i, :])
         drone.plot_tensegrity_drone()
