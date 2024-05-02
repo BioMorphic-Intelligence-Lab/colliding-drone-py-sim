@@ -13,6 +13,9 @@ class TensegrityDrone(object):
         self.orientation = R.from_euler(seq='xyz',
                                         angles=[0.0, 0.0, 0.0])
         
+        # Completed trajectory
+        self.position_hist = np.array([p[0:3]])
+        
         # Gravity constant
         self.g = g
 
@@ -94,9 +97,13 @@ class TensegrityDrone(object):
                      self.position[2]+0.01,
                      f"CoM")
 
-        self.ax.scatter(self.vertices[:,0], 
-           self.vertices[:,1], 
-           self.vertices[:,2])
+        self.ax.scatter(self.vertices[:,0] + self.position[0], 
+                        self.vertices[:,1] + self.position[1], 
+                        self.vertices[:,2] + self.position[2])
+        
+        self.ax.plot(self.position_hist[:, 0],
+                     self.position_hist[:, 1],
+                     self.position_hist[:, 2], color="orange")
 
         for i in range(len(self.propellers)):
             tau = np.linspace(-np.pi, np.pi, 25)
@@ -104,25 +111,31 @@ class TensegrityDrone(object):
                                                       self.r * np.cos(tau),
                                                       np.zeros_like(tau)]).T) \
                         + self.propellers[i, :]
-            self.ax.plot(circle[:, 0], circle[:, 1], circle[:, 2], color="red")
+            self.ax.plot(circle[:, 0] + self.position[0],
+                         circle[:, 1] + self.position[1],
+                         circle[:, 2] + self.position[2], color="red")
 
         for i in range(len(self.vertices)):
-            self.ax.text(self.vertices[i, 0], 
-                    self.vertices[i, 1], 
-                    self.vertices[i, 2], 
-                    f"Vertex {i+1}")
+            self.ax.text(self.vertices[i, 0] + self.position[0], 
+                         self.vertices[i, 1] + self.position[1], 
+                         self.vertices[i, 2] + self.position[2], 
+                         rf"$v_{{{i+1}}}$")
 
         for i in range(0, 11, 2):
             segment = np.array([self.vertices[i,:],self.vertices[i+1,:]])
-            self.ax.plot(segment[:,0],segment[:,1],segment[:,2], color="black")
+            self.ax.plot(segment[:,0] + self.position[0],
+                         segment[:,1] + self.position[1],
+                         segment[:,2] + self.position[2], color="black")
 
         for idx in self.strings:
             string = np.array([self.vertices[idx[0],:], self.vertices[idx[1], :]])
-            self.ax.plot(string[:,0], string[:,1], string[:,2], color="grey")
+            self.ax.plot(string[:,0] + self.position[0],
+                         string[:,1] + self.position[1],
+                         string[:,2] + self.position[2], color="grey")
 
-        self.ax.set_xlabel(f"x[m]")
-        self.ax.set_ylabel(f"y[m]")
-        self.ax.set_zlabel(f"z[m]")
+        self.ax.set_xlabel(f"x [m]")
+        self.ax.set_ylabel(f"y [m]")
+        self.ax.set_zlabel(f"z [m]")
 
         self.set_axes_equal(self.ax)
 
@@ -192,9 +205,19 @@ class TensegrityDrone(object):
 
         return x_ddot
 
+    def set_pose(self, p: np.array) -> None:
+        self.position = p[0:3]
+        self.orientation = R.from_euler("xyz", p[3:6])
+        self.position_hist = np.append(self.position_hist, [self.position], axis=0)
 
+    def set_limits(self, xlim: tuple, ylim: tuple, zlim: tuple) -> None:
+        self.ax.set_xlim(xlim[0], xlim[1])
+        self.ax.set_ylim(ylim[0], ylim[1])
+        self.ax.set_zlim(zlim[0], zlim[1])
+        
     def save(self, name: str) -> None:
         self.fig.savefig(name)
-    def show(self):
+
+    def show(self) -> None:
         plt.show()
 
