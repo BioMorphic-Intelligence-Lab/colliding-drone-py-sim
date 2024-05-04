@@ -20,33 +20,35 @@ def add_po() -> dict:
 
 def main():
 
+    # Add program options
     options = add_po()
 
+    # Init drone objet and define desired attitude
     drone = TensegrityDrone()
+    attitude_des = np.deg2rad([2, 5, 10])
 
-    h_des = 10.0
     u = lambda t, x: motor_speeds_from_forces(
                     motor_forces_from_torques(
-                        angular_vel_ctrl(x[9:12], np.zeros(3)),
-                        2.0 * (h_des - x[2]) + 1.0 * (-x[8]) +  drone.m * drone.g
+                        angular_vel_ctrl(x[9:12], 
+                                         attitude_ctrl(x[3:6],
+                                                       attitude_des)
+                                        ),
+                        drone.m * drone.g
+                        )
                     )
-    )
 
     x0 = np.array([
                     0,0,0,0,0,0,  # Pose
                     0,0,0,0,0,0   # Pose derivative
                 ], dtype=float)
     
-    t = np.linspace(0, 15, 200)
+    t = np.linspace(0, 15, 500)
     x = np.zeros([len(t), 12])
     x[0, :] = x0
     
-    f = lambda t, y : np.concatenate(
-                                        (y[6:12],
-                                            drone.dynamics(x=y, 
-                                                           u=u(t, y))
-                                        )
-                                    )
+    f = lambda t, y : np.concatenate((y[6:12],
+                                      drone.dynamics(x=y, 
+                                                     u=(u(t, y)))))
 
     ## Set up the ODE object
     r = scipy.integrate.ode(f)

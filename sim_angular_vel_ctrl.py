@@ -22,13 +22,14 @@ def main():
 
     options = add_po()
 
-    drone = TensegrityDrone()
+    drone = TensegrityDrone(g = 9.81)
 
-    h_des = 10.0
+    angular_vel_des = np.array([0.1,0.2,0.3])
+
     u = lambda t, x: motor_speeds_from_forces(
                     motor_forces_from_torques(
-                        angular_vel_ctrl(x[9:12], np.zeros(3)),
-                        2.0 * (h_des - x[2]) + 1.0 * (-x[8]) +  drone.m * drone.g
+                        angular_vel_ctrl(x[9:12], angular_vel_des),
+                        drone.m * drone.g
                     )
     )
 
@@ -37,16 +38,13 @@ def main():
                     0,0,0,0,0,0   # Pose derivative
                 ], dtype=float)
     
-    t = np.linspace(0, 15, 200)
+    t = np.linspace(0, 15, 500)
     x = np.zeros([len(t), 12])
     x[0, :] = x0
     
-    f = lambda t, y : np.concatenate(
-                                        (y[6:12],
-                                            drone.dynamics(x=y, 
-                                                           u=u(t, y))
-                                        )
-                                    )
+    f = lambda t, y : np.concatenate((y[6:12],
+                                      drone.dynamics(x=y, 
+                                                     u=(u(t, y)))))
 
     ## Set up the ODE object
     r = scipy.integrate.ode(f)
