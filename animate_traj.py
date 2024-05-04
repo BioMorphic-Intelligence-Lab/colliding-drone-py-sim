@@ -14,10 +14,10 @@ def animate(t, traj, name="video.mp4"):
     print("Drawing frames of the traj... \n")
     for i in tqdm(range(len(t))):
         drone.set_pose(traj[i, :])
-        drone.plot_tensegrity_drone()
-        #drone.set_limits(xlim=(lower_limit, upper_limit),
-        #                 ylim=(lower_limit, upper_limit),
-        #                 zlim=(lower_limit, upper_limit))
+        drone.plot_tensegrity_drone(t[i])
+        drone.set_limits(xlim=(lower_limit, upper_limit),
+                         ylim=(lower_limit, upper_limit),
+                         zlim=(lower_limit, upper_limit))
         drone.save(f"./frames/frame{i:02}.png")
     
     print("\n... done!")

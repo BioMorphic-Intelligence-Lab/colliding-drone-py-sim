@@ -24,7 +24,7 @@ class TensegrityDrone(object):
 
         # Speed^2 to Thrust constant
         self.th = th
-        # Speed^2 to Yaw moment constant
+        # Force to Yaw moment constant
         self.yd = yd
 
         # Inertial parameters
@@ -89,68 +89,7 @@ class TensegrityDrone(object):
             self.fig = plt.figure()
             self.ax = self.fig.add_subplot(projection='3d')
 
-    def plot_tensegrity_drone(self) -> None:
-        self.ax.clear()
-
-        # Plot the CoM
-        self.ax.scatter(self.position[0],
-                        self.position[1],
-                        self.position[2], 
-                        s=45, alpha=0.75,
-                        color="black")
-        self.ax.text(self.position[0]+0.01,
-                     self.position[1]+0.01,
-                     self.position[2]+0.01,
-                     f"CoM")
-
-        # Plot all the tensegrity vertices
-        self.ax.scatter(self.vertices[:,0], 
-                        self.vertices[:,1], 
-                        self.vertices[:,2])
-        for i in range(len(self.vertices)):
-            self.ax.text(self.vertices[i, 0], 
-                         self.vertices[i, 1], 
-                         self.vertices[i, 2], 
-                         rf"$v_{{{i+1}}}$")
-            
-        # Plot the trajectory of the CoM
-        self.ax.plot(self.position_hist[:, 0],
-                     self.position_hist[:, 1],
-                     self.position_hist[:, 2], color="orange")
-
-        # Plot the Propellors
-        for i in range(len(self.propellers)):
-            tau = np.linspace(-np.pi, np.pi, 25)
-            circle = self.orientation.apply(np.array([self.r * np.sin(tau),
-                                                      self.r * np.cos(tau),
-                                                      np.zeros_like(tau)]).T) \
-                        + self.propellers[i, :]
-            self.ax.plot(circle[:, 0],
-                         circle[:, 1],
-                         circle[:, 2], color="red")
-
-        # Plot the carbon fibre rods
-        for i in range(0, 11, 2):
-            segment = np.array([self.vertices[i,:],self.vertices[i+1,:]])
-            self.ax.plot(segment[:,0],
-                         segment[:,1],
-                         segment[:,2], color="black")
-
-        # Plot the strings
-        for idx in self.strings:
-            string = np.array([self.vertices[idx[0],:], self.vertices[idx[1], :]])
-            self.ax.plot(string[:,0],
-                         string[:,1],
-                         string[:,2], color="grey")
-
-        # Set labels
-        self.ax.set_xlabel(f"x [m]")
-        self.ax.set_ylabel(f"y [m]")
-        self.ax.set_zlabel(f"z [m]")
-
-        # For equal aspect ratio
-        self.ax.set_box_aspect([ub - lb for lb, ub in (getattr(self.ax, f'get_{a}lim')() for a in 'xyz')])
-
+    
     def get_A(self, x):
         """ Returns the matrix for the state x that maps control inputs 
             u to state accelerations x_ddot. In this case 6 x 4 matrix.
@@ -197,6 +136,110 @@ class TensegrityDrone(object):
         self.propellers = self.orientation.apply(self.propllers_nominal) + self.position
 
         self.position_hist = np.append(self.position_hist, [self.position], axis=0)
+
+    def plot_tensegrity_drone(self, t=0.0) -> None:
+            self.ax.clear()
+
+            # Plot the CoM
+            self.ax.scatter(self.position[0],
+                            self.position[1],
+                            self.position[2], 
+                            s=45, alpha=0.75,
+                            color="black")
+            self.ax.text(self.position[0]+0.01,
+                        self.position[1]+0.01,
+                        self.position[2]+0.01,
+                        f"CoM")
+
+            # Plot Timestamp
+            self.ax.text(-0.1,-0.1,-0.1,
+                         f"Time: {t: .2f} s",
+                         fontsize=15)
+            # Plot all the tensegrity vertices
+            self.ax.scatter(self.vertices[:,0], 
+                            self.vertices[:,1], 
+                            self.vertices[:,2])
+            for i in range(len(self.vertices)):
+                self.ax.text(self.vertices[i, 0], 
+                            self.vertices[i, 1], 
+                            self.vertices[i, 2], 
+                            rf"$v_{{{i+1}}}$")
+                
+            # Plot the trajectory of the CoM
+            self.ax.plot(self.position_hist[:, 0],
+                        self.position_hist[:, 1],
+                        self.position_hist[:, 2], color="orange")
+
+            # Plot the Propellors
+            for i in range(len(self.propellers)):
+                tau = np.linspace(-np.pi, np.pi, 25)
+                circle = self.orientation.apply(np.array([self.r * np.sin(tau),
+                                                        self.r * np.cos(tau),
+                                                        np.zeros_like(tau)]).T) \
+                            + self.propellers[i, :]
+                self.ax.plot(circle[:, 0],
+                            circle[:, 1],
+                            circle[:, 2], color="red")
+
+            # Plot the carbon fibre rods
+            for i in range(0, 11, 2):
+                segment = np.array([self.vertices[i,:],self.vertices[i+1,:]])
+                self.ax.plot(segment[:,0],
+                            segment[:,1],
+                            segment[:,2], color="black")
+
+            # Plot the strings
+            for idx in self.strings:
+                string = np.array([self.vertices[idx[0],:], self.vertices[idx[1], :]])
+                self.ax.plot(string[:,0],
+                            string[:,1],
+                            string[:,2], color="grey")
+
+            # Set labels
+            self.ax.set_xlabel(f"x [m]")
+            self.ax.set_ylabel(f"y [m]")
+            self.ax.set_zlabel(f"z [m]")
+
+            # For equal aspect ratio
+            #self.ax.set_box_aspect([ub - lb for lb, ub in (getattr(self.ax, f'get_{a}lim')() for a in 'xyz')])
+
+    def plot_trajectory(self, t, x,
+                        name, u=lambda t, x: np.zeros(4)) -> None:
+        ## Plot x versus t
+        fig = plt.figure()
+        ax = fig.subplots(3, sharex=True)
+        ax[0].plot(t, x[:, 0:3])
+        ax[0].set_ylabel(r'Position [$m$]')
+        ax[0].legend([r"$x$",r"$y$",r"$z$"], ncol=3, loc="upper right")
+        ax2 = ax[0].twinx()
+        ax2.plot(t, x[:, 6:9], "--")
+        ax2.set_ylabel(r'Velocity [$m / s$]')
+        ax2.legend([r"$\dot{x}$",r"$\dot{y}$",r"$\dot{z}$"],
+                   ncol=3, loc="lower right")
+        
+        ax[1].plot(t, np.rad2deg(x[:, 3:6]))
+        ax[1].set_ylabel(r'Orientation [$^\circ$]')
+        ax[1].legend([
+                r"$\phi$",r"$\theta$",r"$\psi$",
+                ], ncol=3, loc="upper right")
+        ax3 = ax[1].twinx()
+        ax3.plot(t, np.rad2deg(x[:, 9:12]), "--")
+        ax3.set_ylabel(r'Angular Vel [$^\circ / s$]')
+        ax3.legend([
+                r"$\dot{\phi}$",r"$\dot{\theta}$",r"$\dot{\psi}$"
+                ], ncol=3, loc="lower right")
+        
+        ctrl = np.zeros([len(t), 4])
+        for i in range(len(t)):
+            ctrl[i, :] = u(t[i], x[i, :])
+        ax[2].plot(t, self.th * ctrl ** 2)
+        ax[2].legend([r"$u_1$",r"$u_2$",r"$u_3$",r"$u_4$"],
+                     bbox_to_anchor=(1.0, 1.0))
+        ax[2].set_xlim([t[0], t[-1]])
+        ax[2].set_xlabel(r't [$s$]')
+        ax[2].set_ylabel(r'Thrust [$N$]')
+
+        plt.savefig(name, bbox_inches='tight')
 
     def set_limits(self, xlim: tuple, ylim: tuple, zlim: tuple) -> None:
         self.ax.set_xlim(xlim[0], xlim[1])
