@@ -7,8 +7,8 @@ def animate(t, traj, name="video.mp4"):
     drone = TensegrityDrone(plot=True)
     
     # Read out the limits for plotting
-    lower_limit = min(traj[:,0:3].flatten()) - 0.25
-    upper_limit = max(traj[:,0:3].flatten()) + 0.25
+    lower_limit = min(traj[:,0:3].flatten()) - 0.1
+    upper_limit = max(traj[:,0:3].flatten()) + 0.1
 
     # Loop through the traj and save a frame for each point
     print("Drawing frames of the traj... \n")

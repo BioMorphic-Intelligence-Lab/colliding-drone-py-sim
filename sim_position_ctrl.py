@@ -47,9 +47,10 @@ def main():
     # Init drone objet and define desired attitude
     drone = TensegrityDrone()
     t_end = 20
-    des_p = lambda t: np.array([-2 * np.sin(2 * 0.1 * t * 2 * np.pi),
-                                2 * np.cos(0.1 * t * 2 * np.pi),
-                                2.0]) 
+    speed = 0.22 # Revolution per second
+    des_p = lambda t: np.array([0.25 * np.sin(2 * speed * t * 2 * np.pi),
+                                0.25 * np.cos(speed* t * 2 * np.pi),
+                                0.25])
     des_yaw = lambda t:np.deg2rad(0)
 
     # Set control law
