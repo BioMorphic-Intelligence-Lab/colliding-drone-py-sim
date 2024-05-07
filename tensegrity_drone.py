@@ -1,14 +1,18 @@
 import numpy as np
 from scipy.spatial.transform import Rotation as R
 from mpl_toolkits.mplot3d import Axes3D
-from matplotlib import cm
 import matplotlib.pyplot as plt
+
+from rectoid import plot_rectoid
 
 class TensegrityDrone(object):
 
     def __init__(self, p=[0.0, 0.0, 0.0], angles=[0.0, 0.0, 0.0],
                  l=0.22, g=9.81, th=7.50e-8, yd=0.009975,
                  m=0.315, I=[6.21e-4, 9.62e-4, 9.22e-4],
+                 barrier_loc=[], barrier_sidelength=[],
+                 barrier_orientation=[0, 0, 0],
+                 n = [0, -1, 0],
                  plot=False) -> None:
 
         # Pose
@@ -84,6 +88,17 @@ class TensegrityDrone(object):
                     [6, 8], [6, 9], [7, 10], [7, 11]
                     ]
         
+        # Save all barriers present in the world
+        self.barrier_loc = np.array(barrier_loc)
+        self.barrier_sidelength = np.array(barrier_sidelength)
+        self.barrier_orientation = R.from_euler(seq="xyz", angles=barrier_orientation)
+        # Normal vector and plane parameter from the normal form parametrization
+        #   n1 * x +  n2 * y  + n3 * z + d = 0
+        self.n = self.barrier_orientation.apply(n)
+        self.d = np.dot(self.n, self.barrier_loc
+                                    + 0.5 * self.barrier_sidelength[2]
+                                        * self.barrier_orientation.apply(self.n))
+
         # Setting up plotting stuff
         if plot:
             self.fig = plt.figure()
@@ -102,8 +117,7 @@ class TensegrityDrone(object):
         return np.concatenate((np.array(4 * [linear_acc_mat]).T,
                                self.rotational_acc_mat))
 
-    def dynamics(self, x, u, f_ext=np.array([0,0,0]), tau_ext=np.array([0, 0, 0]),
-                 update_internal_state=False) -> np.array:
+    def dynamics(self, x, u, update_internal_state=False) -> np.array:
         
         if update_internal_state:
             self.position = x[0:3]
@@ -123,8 +137,11 @@ class TensegrityDrone(object):
         x_ddot += np.array([0, 0, -self.g,
                             0, 0, 0])
         
+        # Find external wrench
+        tau_ext = self.get_contact_wrench(x)
+
         # Add external forces and torques contribution
-        x_ddot += np.concatenate((f_ext / self.m, tau_ext / self.I))
+        x_ddot += np.concatenate((tau_ext[0:3] / self.m, tau_ext[3:6] / self.I))
 
         return x_ddot
 
@@ -137,7 +154,105 @@ class TensegrityDrone(object):
 
         self.position_hist = np.append(self.position_hist, [self.position], axis=0)
 
+    def is_in_contact(self, vertices: np.array) -> np.array:
+        """Function the returns a binary array indicating
+           which of vertices are in contact and which ones are not"""
+        # Currently only works if the barrier rectoid is not rotated
+        return np.array([(
+            (self.barrier_orientation.apply(vertices[i, :])
+                >= (self.barrier_loc - 0.5 * self.barrier_sidelength)).all()
+            and
+            (self.barrier_orientation.apply(vertices[i, :])
+                <= (self.barrier_loc + 0.5 * self.barrier_sidelength)).all()
+                )
+            for i in range(len(vertices))
+        ])
+
+    def get_vertex_velocities(self, x: np.array, selector: np.array) -> np.array:
+
+        # Init velocity vector
+        vel = np.zeros([len(selector), 3])
+        orientation = R.from_euler(seq="xyz", angles=x[3:6])
+
+        for i, idx in enumerate(selector):
+            # Add the linear contribution
+            vel[i,:] += x[6:9]
+
+            # Add the rotational contribution
+            vel[i, :] += orientation.apply(x[9:12] * self.vertices_nominal[idx, :])
+
+        return vel
+
+    def get_contact_wrench(self, x: np.array) -> np.array:
+        """Function that gets the total contact wrench acting on the system
+           by summing up the indiviual wrenches from each vertex"""
+
+        # Initialize the wrench vector
+        wrench = np.zeros(6)
+
+        # Find vertex locations from state
+        vertices = np.zeros([len(self.vertices_nominal), 3])
+        rot = R.from_euler(seq="xyz", angles=x[3:6])
+        for i in range(len(self.vertices_nominal)):
+            vertices[i, :] = rot.apply(self.vertices_nominal[i, :]) + x[0:3]
+
+        # Find which vertices are in contact
+        in_contact = self.is_in_contact(vertices)
+        in_contact_idx = np.flatnonzero(in_contact)
+
+        # Extract their velocities
+        vertex_velocities = self.get_vertex_velocities(x,
+                                selector=in_contact_idx)
+
+        assert len(in_contact_idx) == np.shape(vertex_velocities)[0], \
+               "More velocities extracted that vertices are in contact!"
+
+        # Compute and add the wrench contribution for each one
+        for i, idx in enumerate(in_contact_idx):
+            wrench +=  self.get_contact_wrench_by_vertex(x, vertices[idx],
+                                                         vertex_velocities[i])
+
+        return wrench
+
+    def get_contact_wrench_by_vertex(self, x: np.array,
+                                     vertex: np.array, vertex_velocity: np.array) -> np.array:
+        """Function that finds the wrench acting on the CoM due to the contact
+           of the given vertex """
+
+        # Get the impact force at the vertex
+        force = self.get_contact_force(vertex, vertex_velocity)
+
+        # Concatenate to full 6d wrench
+        wrench = np.concatenate((force, np.cross(vertex - x[0:3], force)))
+
+        return wrench
+
+    def get_contact_force(self, vertex: np.array, vertex_speed: np.array,
+                          k=5000.0, d=100.0 # Spring and damping coefficients
+                          ) -> np.array:
+        """ Function that finds the contact force acting on a single vertex
+            that is in contact """
+        # Find the current penetration depth
+        penetration_depth = np.dot(self.n, vertex) - self.d
+        # Find the current penetration speed, we only do damping
+        # on the way in, ergo saturate
+        penetration_speed = min([np.dot(self.n, vertex_speed), 0])
+
+        # Initialize force vector
+        f = np.zeros(3)
+
+        # Sanity check, we should not be in contact when this is called
+        if penetration_depth > 0:
+            raise Warning("Contact force requested when vertex is not in contact!")
+        else:
+            # Spring damper model of the contact force.
+            # The contact force always acts normal to the plane
+            f = self.n * np.abs(k * penetration_depth + d * penetration_speed)
+
+        return f
+
     def plot_tensegrity_drone(self, t=0.0) -> None:
+
             self.ax.clear()
 
             # Plot the CoM
@@ -155,10 +270,29 @@ class TensegrityDrone(object):
             self.ax.text(-0.1,-0.1,-0.1,
                          f"Time: {t: .2f} s",
                          fontsize=15)
-            # Plot all the tensegrity vertices
-            self.ax.scatter(self.vertices[:,0], 
-                            self.vertices[:,1], 
-                            self.vertices[:,2])
+
+            # Find which vertices are in contact
+            if (not self.barrier_loc.size == 0
+                and not self.barrier_sidelength.size == 0):
+
+                # Plot the barriers if the list is not empty
+                plot_rectoid(self.ax, self.barrier_loc, self.barrier_sidelength, rot=self.barrier_orientation,
+                            facecolors='xkcd:grey', edgecolor="black", alpha=0.5)
+
+                # Find which vertices are in contact
+                in_contact = self.is_in_contact(self.vertices)
+            else:
+                in_contact = np.array(len(self.vertices) * [False])
+
+            # Plot all the tensegrity vertices adjusting
+            # the color base on contact
+            self.ax.scatter(self.vertices[in_contact,0],
+                            self.vertices[in_contact,1],
+                            self.vertices[in_contact,2], color="orange")
+            self.ax.scatter(self.vertices[~in_contact,0],
+                            self.vertices[~in_contact,1],
+                            self.vertices[~in_contact,2], color="blue")
+
             for i in range(len(self.vertices)):
                 self.ax.text(self.vertices[i, 0], 
                             self.vertices[i, 1], 
@@ -178,15 +312,15 @@ class TensegrityDrone(object):
                                                         np.zeros_like(tau)]).T) \
                             + self.propellers[i, :]
                 self.ax.plot(circle[:, 0],
-                            circle[:, 1],
-                            circle[:, 2], color="red")
+                             circle[:, 1],
+                             circle[:, 2], color="red")
 
             # Plot the carbon fibre rods
             for i in range(0, 11, 2):
                 segment = np.array([self.vertices[i,:],self.vertices[i+1,:]])
                 self.ax.plot(segment[:,0],
-                            segment[:,1],
-                            segment[:,2], color="black")
+                             segment[:,1],
+                             segment[:,2], color="black")
 
             # Plot the strings
             for idx in self.strings:
@@ -239,7 +373,8 @@ class TensegrityDrone(object):
         ax[2].set_xlabel(r't [$s$]')
         ax[2].set_ylabel(r'Thrust [$N$]')
 
-        plt.savefig(name, bbox_inches='tight')
+        fig.set_size_inches((5, 10))
+        plt.savefig(name, bbox_inches='tight', dpi=500)
 
     def set_limits(self, xlim: tuple, ylim: tuple, zlim: tuple) -> None:
         self.ax.set_xlim(xlim[0], xlim[1])
