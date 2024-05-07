@@ -230,7 +230,7 @@ class TensegrityDrone(object):
         return wrench
 
     def get_contact_force(self, vertex: np.array, vertex_speed: np.array,
-                          k=5000.0, d=100.0 # Spring and damping coefficients
+                          k=10000.0, d=100.0 # Spring and damping coefficients
                           ) -> np.array:
         """ Function that finds the contact force acting on a single vertex
             that is in contact """

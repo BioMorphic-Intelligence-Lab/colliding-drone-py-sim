@@ -47,7 +47,7 @@ def main():
 
     # Init drone objet and define desired attitude
     drone = TensegrityDrone(plot=True,
-                            p = [0,0,1],
+                            p = [0,0,1], angles=[0.0, 0.01, 0],
                             barrier_loc=[0.0, 0.0, -1],
                             barrier_sidelength=[2.0, 2.0, 2],
                             barrier_orientation=np.deg2rad([0, 0, 0]),
@@ -64,8 +64,8 @@ def main():
     #u(x, des_p=des_p(t), des_yaw=des_yaw(t))
 
     x0 = np.array([
-                    0, 0, 1.0, 0, 0, 0,  # Pose
-                    0, 0,   0, 0, 0, 0   # Pose derivative
+                    0, 0, 1.0,  0.0, 0.01, 0,  # Pose
+                    0, 0,   0,    0,    0, 0   # Pose derivative
                 ], dtype=float)
     
     t = np.linspace(0, t_end, 1000)
@@ -98,7 +98,7 @@ def main():
         ## Animate
         traj = x[:, 0:6]
         animate(t, traj, name=options.anim_path,
-                drone=drone)
+                drone=drone, speed_factor=0.5)
 
 if __name__ == '__main__':
     main()

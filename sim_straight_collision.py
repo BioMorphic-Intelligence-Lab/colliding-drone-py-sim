@@ -46,14 +46,14 @@ def main():
     options = add_po()
 
     # Init drone objet and define desired attitude
-    drone = TensegrityDrone(plot=True,
+    drone = TensegrityDrone(plot=True, angles=[0.0, 0, 0],
                             p = [0,0,0],
-                            barrier_loc=[0.0, 2.0, 1.0],
-                            barrier_sidelength=[2.0, 2.0, 2.0],
+                            barrier_loc=[0.0, 3.0, 1.0],
+                            barrier_sidelength=[4.0, 2.0, 4.0],
                             barrier_orientation=np.deg2rad([0, 0, 0]),
                             n=[0,-1,0])
-    t_end = 8
-    speed = 0.2 # meters per second
+    t_end = 3.0
+    speed = 2 # meters per second
     des_p = lambda t: np.array([0.0,
                                 speed * t,
                                 1])
