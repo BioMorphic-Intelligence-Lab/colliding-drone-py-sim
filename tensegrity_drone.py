@@ -138,11 +138,12 @@ class TensegrityDrone(object):
         x_ddot += np.array([0, 0, -self.g,
                             0, 0, 0])
         
-        # Find external wrench
-        tau_ext = self.get_contact_wrench(x)
+        # Find external wrench if object is specified
+        if len(self.barrier_loc) > 0:
+            tau_ext = self.get_contact_wrench(x)
 
-        # Add external forces and torques contribution
-        x_ddot += np.concatenate((tau_ext[0:3] / self.m, tau_ext[3:6] / self.I))
+            # Add external forces and torques contribution
+            x_ddot += np.concatenate((tau_ext[0:3] / self.m, tau_ext[3:6] / self.I))
 
         return x_ddot
 
