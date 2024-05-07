@@ -94,10 +94,11 @@ class TensegrityDrone(object):
         self.barrier_orientation = R.from_euler(seq="xyz", angles=barrier_orientation)
         # Normal vector and plane parameter from the normal form parametrization
         #   n1 * x +  n2 * y  + n3 * z + d = 0
-        self.n = self.barrier_orientation.apply(n)
-        self.d = np.dot(self.n, self.barrier_loc
-                                    + 0.5 * self.barrier_sidelength[2]
-                                        * self.barrier_orientation.apply(self.n))
+        if len(barrier_loc) > 0:
+            self.n = self.barrier_orientation.apply(n)
+            self.d = np.dot(self.n, self.barrier_loc
+                                        + 0.5 * self.barrier_sidelength[2]
+                                            * self.barrier_orientation.apply(self.n))
 
         # Setting up plotting stuff
         if plot:
