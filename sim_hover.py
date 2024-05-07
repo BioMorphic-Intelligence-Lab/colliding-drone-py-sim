@@ -22,7 +22,7 @@ def main():
 
     options = add_po()
 
-    drone = TensegrityDrone()
+    drone = TensegrityDrone(plot=True)
 
     h_des = 10.0
     u = lambda t, x: motor_speeds_from_forces(
@@ -64,7 +64,7 @@ def main():
     if options.anim_path != "":
         ## Animate
         traj = x[:, 0:6]
-        animate(t, traj, name=options.anim_path)
+        animate(t, traj, name=options.anim_path, drone=drone)
 
 if __name__ == '__main__':
     main()

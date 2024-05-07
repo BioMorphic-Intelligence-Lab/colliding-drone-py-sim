@@ -24,7 +24,7 @@ def main():
     options = add_po()
 
     # Init drone objet and define desired attitude
-    drone = TensegrityDrone()
+    drone = TensegrityDrone(plot=True)
     attitude_des = np.deg2rad([2, 5, 10])
 
     u = lambda t, x: motor_speeds_from_forces(
@@ -66,7 +66,7 @@ def main():
     if options.anim_path != "":
         ## Animate
         traj = x[:, 0:6]
-        animate(t, traj, name=options.anim_path)
+        animate(t, traj, name=options.anim_path, drone=drone)
 
 if __name__ == '__main__':
     main()

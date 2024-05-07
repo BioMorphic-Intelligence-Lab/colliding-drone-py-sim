@@ -22,7 +22,7 @@ def main():
 
     options = add_po()
 
-    drone = TensegrityDrone(g = 9.81)
+    drone = TensegrityDrone(plot=True)
 
     angular_vel_des = np.array([0.1,0.2,0.3])
 
@@ -62,7 +62,7 @@ def main():
     if options.anim_path != "":
         ## Animate
         traj = x[:, 0:6]
-        animate(t, traj, name=options.anim_path)
+        animate(t, traj, name=options.anim_path, drone=drone)
 
 if __name__ == '__main__':
     main()
