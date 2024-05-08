@@ -409,10 +409,10 @@ class TensegrityDrone(object):
                 r"$\dot{\phi}$",r"$\dot{\theta}$",r"$\dot{\psi}$"
                 ], ncol=3, loc="lower right")
         
-        ctrl = np.zeros([len(t[0:-1:step]), 4])
+        ctrl = np.zeros([len(t), 4])
         for i in range(len(ctrl)):
-            ctrl[i, :] = u(t[i * step], x[i * step, :])
-        ax[2].plot(t[0:-1:step], self.th * ctrl ** 2)
+            ctrl[i, :] = u(t[i], x[i, :])
+        ax[2].plot(t, self.th * ctrl ** 2)
         ax[2].legend([r"$u_1$",r"$u_2$",r"$u_3$",r"$u_4$"],
                      bbox_to_anchor=(1.0, 1.0))
         ax[2].set_xlim([t[0], t[-1]])
