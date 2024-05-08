@@ -5,6 +5,7 @@ from tensegrity_drone import TensegrityDrone
 
 def animate(t, traj,
             drone,
+            x_des=None,
             name="video.mp4",
             downsample=1.0,
             speed_factor=1.0):
@@ -20,10 +21,13 @@ def animate(t, traj,
     idx = 0
     for i in tqdm(range(0, len(t), int(1.0 / downsample))):
         drone.set_pose(traj[i, :])
-        drone.plot_tensegrity_drone(t[i])
-        drone.set_limits(xlim=(-limit, limit),
-                         ylim=(-limit, limit),
-                         zlim=(-limit, limit))
+        ref_pos = np.array([])
+        if x_des is not None:
+            ref_pos = x_des(t[i])
+        drone.plot_tensegrity_drone(t[i], x_des=ref_pos)
+        #drone.set_limits(xlim=(-limit, limit),
+        #                 ylim=(-limit, limit),
+        #                 zlim=(-limit, limit))
         drone.save(f"./frames/frame{idx:02}.png")
         idx += 1
     
@@ -33,7 +37,7 @@ def animate(t, traj,
     command =  ["ffmpeg", "-f", "image2", "-framerate",
                 f"{speed_factor * int(len(t) * downsample) / t[-1]}",
                 "-i", "frames/frame%02d.png", "-vcodec",
-                "libx264", "-crf", "22", f"{name}"]
+                "libx264", "-crf", "22", f"{name}", "-y"]
     subprocess.run(command)
 
 def main():
