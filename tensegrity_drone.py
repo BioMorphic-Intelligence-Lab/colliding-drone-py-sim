@@ -355,35 +355,39 @@ class TensegrityDrone(object):
         return angle
 
     def plot_trajectory(self, t, x,
-                        name, u=lambda t, x: np.zeros(4)) -> None:
+                        name, u=lambda t, x: np.zeros(4),
+                        downsample=1.0) -> None:
+        # Find downsampling step
+        step = int(1.0 / downsample)
         ## Plot x versus t
         fig = plt.figure()
         ax = fig.subplots(4, sharex=True)
-        ax[0].plot(t, x[:, 0:3])
+        ax[0].plot(t[0:-1:step], x[0:-1:step, 0:3])
         ax[0].set_ylabel(r'Position [$m$]')
         ax[0].legend([r"$x$",r"$y$",r"$z$"], ncol=3, loc="upper right")
         ax2 = ax[0].twinx()
-        ax2.plot(t, x[:, 6:9], "--")
+        ax2.plot(t[0:-1:step], x[0:-1:step, 6:9], "--")
         ax2.set_ylabel(r'Velocity [$m / s$]')
         ax2.legend([r"$\dot{x}$",r"$\dot{y}$",r"$\dot{z}$"],
                    ncol=3, loc="lower right")
         
-        ax[1].plot(t, np.rad2deg(self.bring_angle_to_range(x[:, 3:6])))
+        ax[1].plot(t[0:-1:step],
+                   np.rad2deg(self.bring_angle_to_range(x[0:-1:step, 3:6])))
         ax[1].set_ylabel(r'Orientation [$^\circ$]')
         ax[1].legend([
                 r"$\phi$",r"$\theta$",r"$\psi$",
                 ], ncol=3, loc="upper right")
         ax3 = ax[1].twinx()
-        ax3.plot(t, np.rad2deg(x[:, 9:12]), "--")
+        ax3.plot(t[0:-1:step], np.rad2deg(x[0:-1:step, 9:12]), "--")
         ax3.set_ylabel(r'Angular Vel [$^\circ / s$]')
         ax3.legend([
                 r"$\dot{\phi}$",r"$\dot{\theta}$",r"$\dot{\psi}$"
                 ], ncol=3, loc="lower right")
         
-        ctrl = np.zeros([len(t), 4])
-        for i in range(len(t)):
-            ctrl[i, :] = u(t[i], x[i, :])
-        ax[2].plot(t, self.th * ctrl ** 2)
+        ctrl = np.zeros([int(downsample * len(t)), 4])
+        for i in range(len(ctrl)):
+            ctrl[i, :] = u(t[i * step], x[i * step, :])
+        ax[2].plot(t[0:-1:step], self.th * ctrl ** 2)
         ax[2].legend([r"$u_1$",r"$u_2$",r"$u_3$",r"$u_4$"],
                      bbox_to_anchor=(1.0, 1.0))
         ax[2].set_xlim([t[0], t[-1]])
@@ -394,7 +398,7 @@ class TensegrityDrone(object):
             and not self.barrier_sidelength.size == 0):
 
             # Find which vertices are in contact
-            in_contact = np.ones((len(t), 12)) * [True]
+            in_contact = np.array(len(t) * [12 * [True]])
             for i in range(len(x)):
                 rot = R.from_euler(seq="xyz", angles=x[i, 3:6])
                 vertices = rot.apply(self.vertices_nominal) + x[i, 0:3]
@@ -403,7 +407,8 @@ class TensegrityDrone(object):
             in_contact = np.ones((len(t), 12)) * [False]
 
         for i in range(12):
-            ax[3].scatter(t, (i + 1) * in_contact[:, i], color="orange")
+            time = t[in_contact[:, i]]
+            ax[3].scatter(time, (i + 1) * np.ones_like(time), color="orange")
 
         # Set plot ranges and labels
         ax[3].set_ylim((0.5, 12.5))

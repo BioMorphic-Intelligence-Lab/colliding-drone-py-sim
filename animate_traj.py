@@ -6,8 +6,10 @@ from tensegrity_drone import TensegrityDrone
 def animate(t, traj,
             drone,
             name="video.mp4",
+            downsample=1.0,
             speed_factor=1.0):
     
+    assert downsample <= 1 , "Downsampling factor should not be > 1.0"
     # Read out the limits for plotting
     lower_limit = min(traj[:,0:3].flatten()) - 0.1
     upper_limit = max(traj[:,0:3].flatten()) + 0.1
@@ -15,19 +17,21 @@ def animate(t, traj,
 
     # Loop through the traj and save a frame for each point
     print("Drawing frames of the traj...")
-    for i in tqdm(range(len(t))):
+    idx = 0
+    for i in tqdm(range(0, len(t), int(1.0 / downsample))):
         drone.set_pose(traj[i, :])
         drone.plot_tensegrity_drone(t[i])
         drone.set_limits(xlim=(-limit, limit),
                          ylim=(-limit, limit),
                          zlim=(-limit, limit))
-        drone.save(f"./frames/frame{i:02}.png")
+        drone.save(f"./frames/frame{idx:02}.png")
+        idx += 1
     
     print("... done!")
 
     # Call ffmpeg to animate the video
     command =  ["ffmpeg", "-f", "image2", "-framerate",
-                f"{speed_factor * len(t) / t[-1]}",
+                f"{speed_factor * int(len(t) * downsample) / t[-1]}",
                 "-i", "frames/frame%02d.png", "-vcodec",
                 "libx264", "-crf", "22", f"{name}"]
     subprocess.run(command)
