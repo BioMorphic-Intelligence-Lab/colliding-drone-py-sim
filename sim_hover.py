@@ -1,7 +1,7 @@
 import numpy as np
 
 from tensegrity_drone import TensegrityDrone
-from controller import *
+from controller import Controller
 from misc import *
 
 def main():
@@ -9,11 +9,12 @@ def main():
     options = add_po()
 
     drone = TensegrityDrone(plot=True)
+    controller = Controller()
 
     h_des = 10.0
-    u = lambda t, x: motor_speeds_from_forces(
-                    motor_forces_from_torques(
-                        angular_vel_ctrl(x[9:12], np.zeros(3)),
+    u = lambda t, x: controller.motor_speeds_from_forces(
+                    controller.motor_forces_from_torques(
+                        controller.angular_vel_ctrl(x[9:12], np.zeros(3)),
                         2.0 * (h_des - x[2]) + 1.0 * (-x[8]) +  drone.m * drone.g
                     )
     )
@@ -33,7 +34,8 @@ def main():
                                         )
                                     )
     
-    run(options, f, x0, t, drone, u, des_p=None,
+    run(options, f, x0, t, drone, controller, 
+        ctrl=u, des_p=None,
         speed_factor=1, downsample=1)
 
 if __name__ == '__main__':

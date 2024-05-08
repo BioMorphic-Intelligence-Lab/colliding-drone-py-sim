@@ -18,7 +18,7 @@ def add_po() -> dict:
 
     return options
 
-def run(options, f, x0, t, drone, ctrl, des_p,
+def run(options, f, x0, t, drone, controller, ctrl, des_p,
         speed_factor, downsample, max_step=0.001):
     if options.load_path != "":
         r = np.loadtxt(options.load_path)
@@ -39,6 +39,8 @@ def run(options, f, x0, t, drone, ctrl, des_p,
         np.savetxt(options.save_path, traj)
 
     if options.plot_path != "":
+        if controller is not None:
+            controller.reset()
         drone.plot_trajectory(t, x.T, options.plot_path, u=ctrl,
                               downsample=downsample)
 
