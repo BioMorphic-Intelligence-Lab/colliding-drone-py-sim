@@ -259,7 +259,8 @@ class TensegrityDrone(object):
 
         return f
 
-    def plot_tensegrity_drone(self, t=0.0, axis=False) -> None:
+    def plot_tensegrity_drone(self, t=0.0, axis=False,
+                              x_des=np.array([])) -> None:
 
             self.ax.clear()
 
@@ -297,6 +298,12 @@ class TensegrityDrone(object):
                          f"Time: {t: .2f} s",
                          fontsize=15)
 
+            # Plot Reference Position if give
+            if x_des.size != 0:
+                self.ax.scatter(x_des[0],
+                                x_des[1],
+                                x_des[2],
+                                s=45, color="black", marker="x")
             # Find which vertices are in contact
             if (not self.barrier_loc.size == 0
                 and not self.barrier_sidelength.size == 0):
@@ -361,7 +368,7 @@ class TensegrityDrone(object):
             self.ax.set_zlabel(f"z [m]")
 
             # For equal aspect ratio
-            #self.ax.set_box_aspect([ub - lb for lb, ub in (getattr(self.ax, f'get_{a}lim')() for a in 'xyz')])
+            self.ax.set_box_aspect([ub - lb for lb, ub in (getattr(self.ax, f'get_{a}lim')() for a in 'xyz')])
 
     def bring_angle_to_range(self, angle):
         """Function that brings arbitrary angles to the range [-pi, pi]"""
@@ -402,7 +409,7 @@ class TensegrityDrone(object):
                 r"$\dot{\phi}$",r"$\dot{\theta}$",r"$\dot{\psi}$"
                 ], ncol=3, loc="lower right")
         
-        ctrl = np.zeros([int(downsample * len(t)), 4])
+        ctrl = np.zeros([len(t[0:-1:step]), 4])
         for i in range(len(ctrl)):
             ctrl[i, :] = u(t[i * step], x[i * step, :])
         ax[2].plot(t[0:-1:step], self.th * ctrl ** 2)
@@ -422,7 +429,7 @@ class TensegrityDrone(object):
                 vertices = rot.apply(self.vertices_nominal) + x[i, 0:3]
                 in_contact[i, :] = self.is_in_contact(vertices)
         else:
-            in_contact = np.ones((len(t), 12)) * [False]
+            in_contact = np.array(len(t) * [12 * [False]])
 
         for i in range(12):
             time = t[in_contact[:, i]]
