@@ -53,15 +53,9 @@ def main():
                             barrier_orientation=np.deg2rad([0, 0, 0]),
                             n=[0,0,1])
     t_end = 5
-    speed = 0.2 # meters per second
-    des_p = lambda t: np.array([0.0,
-                                speed * t,
-                                1])
-    des_yaw = lambda t:np.deg2rad(0)
 
     # Set control law
     ctrl = lambda t, x: np.array([0,0,0,0], dtype=float) 
-    #u(x, des_p=des_p(t), des_yaw=des_yaw(t))
 
     x0 = np.array([
                     0, 0, 1.0,  0.0, 0.01, 0,  # Pose
@@ -69,36 +63,26 @@ def main():
                 ], dtype=float)
     
     t = np.linspace(0, t_end, 1000)
-    x = np.zeros([len(t), 12])
-    x[0, :] = x0
-    
+
     f = lambda t, y : np.concatenate((y[6:12],
                                       drone.dynamics(x=y, 
                                                      u=(ctrl(t, y)),
                                                      update_internal_state=True)))
 
     ## Set up the ODE object
-    r = scipy.integrate.ode(f)
-    r.set_integrator('vode', method='bdf', order=5, nsteps=1e5)
-    #r.set_integrator('dopri5', nsteps=1e5)    # A Runge-Kutta solver
-    r.set_initial_value(x0)
-
     print("Solve ode ...")
-    for n in tqdm(range(1,len(t))):
-        r.integrate(t[n])
-        assert r.successful()
-        x[n] = r.y
-
+    r = scipy.integrate.solve_ivp(f, (0, t_end), x0, method='BDF',
+                                  t_eval=t, max_step=0.001)
     print("... done!")
 
     if options.plot_path != "":
-        drone.plot_trajectory(t, x, options.plot_path, u=ctrl)
+        drone.plot_trajectory(r.t, r.y.T, options.plot_path, u=ctrl)
 
     if options.anim_path != "":
         ## Animate
-        traj = x[:, 0:6]
-        animate(t, traj, name=options.anim_path,
-                drone=drone, speed_factor=0.5)
+        traj = r.y[0:6, :].T
+        animate(r.t, traj, name=options.anim_path,
+                drone=drone, speed_factor=1)
 
 if __name__ == '__main__':
     main()

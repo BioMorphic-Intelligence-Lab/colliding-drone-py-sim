@@ -47,11 +47,14 @@ def main():
     # Init drone objet and define desired attitude
     drone = TensegrityDrone(plot=True)
     t_end = 20
-    speed = 0.22 # Revolution per second
-    des_p = lambda t: np.array([0.25 * np.sin(2 * speed * t * 2 * np.pi),
-                                0.25 * np.cos(speed* t * 2 * np.pi),
-                                0.25])
-    des_yaw = lambda t:np.deg2rad(0)
+    speed = 0.1 # Revolution per second
+    amplitude = 0.5
+    height = 0.5
+    des_p = lambda t: np.array([amplitude * np.sin(2 * speed * t * 2 * np.pi),
+                                amplitude * np.cos(speed* t * 2 * np.pi),
+                                height])
+    des_yaw = lambda t: np.arctan2(-amplitude*np.sin(speed * t * 2 * np.pi) * 2 * speed * np.pi,
+                                    amplitude*np.cos(2*speed*t*2*np.pi) * 4 * speed*np.pi)
 
     # Set control law
     ctrl = lambda t, x: u(x, des_p=des_p(t), des_yaw=des_yaw(t))
@@ -62,30 +65,25 @@ def main():
                 ], dtype=float)
     
     t = np.linspace(0, t_end, 1000)
-    x = np.zeros([len(t), 12])
-    x[0, :] = x0
     
     f = lambda t, y : np.concatenate((y[6:12],
                                       drone.dynamics(x=y, 
                                                      u=(ctrl(t, y)))))
 
     ## Set up the ODE object
-    r = scipy.integrate.ode(f)
-    r.set_integrator('dopri5')    # A Runge-Kutta solver
-    r.set_initial_value(x0)
-
-    for n in range(1,len(t)):
-        r.integrate(t[n])
-        assert r.successful()
-        x[n] = r.y
+    print("Solve ode ...")
+    r = scipy.integrate.solve_ivp(f, (0, t_end), x0, method='BDF',
+                                  t_eval=t, max_step=0.001)
+    print("... done!")
 
     if options.plot_path != "":
-        drone.plot_trajectory(t, x, options.plot_path, u=ctrl)
+        drone.plot_trajectory(r.t, r.y.T, options.plot_path, u=ctrl)
 
     if options.anim_path != "":
         ## Animate
-        traj = x[:, 0:6]
-        animate(t, traj, name=options.anim_path, drone=drone)
+        traj = r.y[0:6, :].T
+        animate(r.t, traj, name=options.anim_path,
+                drone=drone, speed_factor=1)
 
 if __name__ == '__main__':
     main()

@@ -41,32 +41,27 @@ def main():
                     0,0,0,0,0,0,  # Pose
                     0,0,0,0,0,0   # Pose derivative
                 ], dtype=float)
-    
-    t = np.linspace(0, 15, 500)
-    x = np.zeros([len(t), 12])
-    x[0, :] = x0
+    t_end = 15
+    t = np.linspace(0, t_end, 500)
     
     f = lambda t, y : np.concatenate((y[6:12],
                                       drone.dynamics(x=y, 
                                                      u=(u(t, y)))))
 
     ## Set up the ODE object
-    r = scipy.integrate.ode(f)
-    r.set_integrator('dopri5')    # A Runge-Kutta solver
-    r.set_initial_value(x0)
-
-    for n in range(1,len(t)):
-        r.integrate(t[n])
-        assert r.successful()
-        x[n] = r.y
+    print("Solve ode ...")
+    r = scipy.integrate.solve_ivp(f, (0, t_end), x0, method='BDF',
+                                  t_eval=t, max_step=0.001)
+    print("... done!")
 
     if options.plot_path != "":
-        drone.plot_trajectory(t, x, options.plot_path, u=u)
+        drone.plot_trajectory(r.t, r.y.T, options.plot_path, u=u)
 
     if options.anim_path != "":
         ## Animate
-        traj = x[:, 0:6]
-        animate(t, traj, name=options.anim_path, drone=drone)
+        traj = r.y[0:6, :].T
+        animate(r.t, traj, name=options.anim_path,
+                drone=drone, speed_factor=1)
 
 if __name__ == '__main__':
     main()

@@ -68,36 +68,26 @@ def main():
                 ], dtype=float)
     
     t = np.linspace(0, t_end, 1000)
-    x = np.zeros([len(t), 12])
-    x[0, :] = x0
     
     f = lambda t, y : np.concatenate((y[6:12],
                                       drone.dynamics(x=y, 
                                                      u=(ctrl(t, y)),
                                                      update_internal_state=True)))
 
-    ## Set up the ODE object
-    r = scipy.integrate.ode(f)
-    r.set_integrator('vode', method='bdf', order=5, nsteps=1e5)
-    #r.set_integrator('dopri5', nsteps=1e5)    # A Runge-Kutta solver
-    r.set_initial_value(x0)
-
+        ## Set up the ODE object
     print("Solve ode ...")
-    for n in tqdm(range(1,len(t))):
-        r.integrate(t[n])
-        assert r.successful()
-        x[n] = r.y
-
+    r = scipy.integrate.solve_ivp(f, (0, t_end), x0, method='BDF',
+                                  t_eval=t, max_step=0.1)
     print("... done!")
 
     if options.plot_path != "":
-        drone.plot_trajectory(t, x, options.plot_path, u=ctrl)
+        drone.plot_trajectory(r.t, r.y.T, options.plot_path, u=ctrl)
 
     if options.anim_path != "":
         ## Animate
-        traj = x[:, 0:6]
-        animate(t, traj, name=options.anim_path,
-                drone=drone)
+        traj = r.y[0:6, :].T
+        animate(r.t, traj, name=options.anim_path,
+                drone=drone, speed_factor=1)
 
 if __name__ == '__main__':
     main()
