@@ -67,7 +67,7 @@ def main():
                     0, 0, 0, 0, 0, 0   # Pose derivative
                 ], dtype=float)
     
-    t = np.linspace(0, t_end, 1000)
+    t = np.linspace(0, t_end, int(1e5))
     
     f = lambda t, y : np.concatenate((y[6:12],
                                       drone.dynamics(x=y, 
@@ -81,13 +81,15 @@ def main():
     print("... done!")
 
     if options.plot_path != "":
-        drone.plot_trajectory(r.t, r.y.T, options.plot_path, u=ctrl)
+        drone.plot_trajectory(r.t, r.y.T, options.plot_path, u=ctrl,
+                              downsample=0.01)
 
     if options.anim_path != "":
         ## Animate
         traj = r.y[0:6, :].T
         animate(r.t, traj, name=options.anim_path,
-                drone=drone, speed_factor=1)
+                drone=drone, speed_factor=1,
+                downsample=0.01)
 
 if __name__ == '__main__':
     main()
