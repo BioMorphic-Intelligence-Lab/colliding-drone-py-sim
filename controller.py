@@ -170,12 +170,28 @@ class Controller(object):
                         )
       
 class CollisionRecoveryController(Controller):
-   def __init__(self) -> None:
+   def __init__(self, drone) -> None:
       super().__init__()
+      self.drone = drone
       self.collision_occured = False
+      self.new_ref = np.zeros(3)
 
-   @override
    def reset(self):
       self.collision_occured = False
 
    def u(self, x, x_des, v_des, yaw_des):
+      # Find current position of vertices
+      rot = R.from_euler(seq="xyz", angles=x[3:6])
+      vertices = rot.apply(self.drone.vertices_nominal) + x[0:3]
+
+      # Find which vertices are in contact
+      in_contact = self.drone.is_in_contact(vertices)
+
+      if in_contact.any() or self.collision_occured:
+         if self.collision_occured == False:
+            self.new_ref = x[0:3] - np.array([0, 0.5, 0])
+         
+         self.collision_occured = True
+         return super().u(x, self.new_ref, np.zeros(3), yaw_des)
+      else:
+         return super().u(x,x_des,v_des,yaw_des)
