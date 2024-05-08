@@ -13,6 +13,8 @@ class TensegrityDrone(object):
                  barrier_loc=[], barrier_sidelength=[],
                  barrier_orientation=[0, 0, 0],
                  n = [0, -1, 0],
+                 # Spring and damping coefficients for contact dynamics
+                 k=10000.0, damp=100.0,
                  plot=False) -> None:
 
         # Pose
@@ -92,6 +94,11 @@ class TensegrityDrone(object):
         self.barrier_loc = np.array(barrier_loc)
         self.barrier_sidelength = np.array(barrier_sidelength)
         self.barrier_orientation = R.from_euler(seq="xyz", angles=barrier_orientation)
+
+        # Contact Dynamics Parameters
+        self.k = k
+        self.damp = damp
+
         # Normal vector and plane parameter from the normal form parametrization
         #   n1 * x +  n2 * y  + n3 * z + d = 0
         if len(barrier_loc) > 0:
@@ -225,13 +232,12 @@ class TensegrityDrone(object):
         force = self.get_contact_force(vertex, vertex_velocity)
 
         # Concatenate to full 6d wrench
-        wrench = np.concatenate((force, np.cross(vertex - x[0:3], force)))
+        wrench = np.concatenate((force,
+                                 np.cross(vertex - x[0:3], force)))
 
         return wrench
 
-    def get_contact_force(self, vertex: np.array, vertex_speed: np.array,
-                          k=10000.0, d=100.0 # Spring and damping coefficients
-                          ) -> np.array:
+    def get_contact_force(self, vertex: np.array, vertex_speed: np.array) -> np.array:
         """ Function that finds the contact force acting on a single vertex
             that is in contact """
         # Find the current penetration depth
@@ -249,7 +255,7 @@ class TensegrityDrone(object):
         else:
             # Spring damper model of the contact force.
             # The contact force always acts normal to the plane
-            f = self.n * np.abs(k * penetration_depth + d * penetration_speed)
+            f = self.n * np.abs(self.k * penetration_depth + self.damp * penetration_speed)
 
         return f
 
@@ -339,11 +345,20 @@ class TensegrityDrone(object):
             # For equal aspect ratio
             #self.ax.set_box_aspect([ub - lb for lb, ub in (getattr(self.ax, f'get_{a}lim')() for a in 'xyz')])
 
+    def bring_angle_to_range(self, angle):
+        """Function that brings arbitrary angles to the range [-pi, pi]"""
+        angle -= np.sign(angle) * (np.abs(angle) // (2*np.pi)) * 2 * np.pi
+
+        angle[angle >  np.pi] -= 2*np.pi
+        angle[angle < -np.pi] += 2*np.pi
+
+        return angle
+
     def plot_trajectory(self, t, x,
                         name, u=lambda t, x: np.zeros(4)) -> None:
         ## Plot x versus t
         fig = plt.figure()
-        ax = fig.subplots(3, sharex=True)
+        ax = fig.subplots(4, sharex=True)
         ax[0].plot(t, x[:, 0:3])
         ax[0].set_ylabel(r'Position [$m$]')
         ax[0].legend([r"$x$",r"$y$",r"$z$"], ncol=3, loc="upper right")
@@ -353,7 +368,7 @@ class TensegrityDrone(object):
         ax2.legend([r"$\dot{x}$",r"$\dot{y}$",r"$\dot{z}$"],
                    ncol=3, loc="lower right")
         
-        ax[1].plot(t, np.rad2deg(x[:, 3:6]))
+        ax[1].plot(t, np.rad2deg(self.bring_angle_to_range(x[:, 3:6])))
         ax[1].set_ylabel(r'Orientation [$^\circ$]')
         ax[1].legend([
                 r"$\phi$",r"$\theta$",r"$\psi$",
@@ -372,9 +387,31 @@ class TensegrityDrone(object):
         ax[2].legend([r"$u_1$",r"$u_2$",r"$u_3$",r"$u_4$"],
                      bbox_to_anchor=(1.0, 1.0))
         ax[2].set_xlim([t[0], t[-1]])
-        ax[2].set_xlabel(r't [$s$]')
         ax[2].set_ylabel(r'Thrust [$N$]')
 
+        # Find which vertices are in contact
+        if (not self.barrier_loc.size == 0
+            and not self.barrier_sidelength.size == 0):
+
+            # Find which vertices are in contact
+            in_contact = np.ones((len(t), 12)) * [True]
+            for i in range(len(x)):
+                rot = R.from_euler(seq="xyz", angles=x[i, 3:6])
+                vertices = rot.apply(self.vertices_nominal) + x[i, 0:3]
+                in_contact[i, :] = self.is_in_contact(vertices)
+        else:
+            in_contact = np.ones((len(t), 12)) * [False]
+
+        for i in range(12):
+            ax[3].scatter(t, (i + 1) * in_contact[:, i], color="orange")
+
+        # Set plot ranges and labels
+        ax[3].set_ylim((0.5, 12.5))
+        ax[3].set_yticks([i + 1 for i in range(12)])
+        ax[3].set_yticklabels([fr'$v_{{{i+1}}}$' for i in range(12)])
+        ax[3].set_xlabel(r't [$s$]')
+
+        # Save the figure
         fig.set_size_inches((5, 10))
         plt.savefig(name, bbox_inches='tight', dpi=500)
 
