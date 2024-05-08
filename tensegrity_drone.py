@@ -259,9 +259,27 @@ class TensegrityDrone(object):
 
         return f
 
-    def plot_tensegrity_drone(self, t=0.0) -> None:
+    def plot_tensegrity_drone(self, t=0.0, axis=False) -> None:
 
             self.ax.clear()
+
+            # Plot body axis
+            if axis:
+                self.ax.quiver(self.position[0],
+                               self.position[1],
+                               self.position[2],
+                               1, 0, 0,
+                               length=0.1, normalize=True, color="red")
+                self.ax.quiver(self.position[0],
+                               self.position[1],
+                               self.position[2],
+                               0, 1, 0,
+                               length=0.1, normalize=True, color="green")
+                self.ax.quiver(self.position[0],
+                               self.position[1],
+                               self.position[2],
+                               0, 0, 1,
+                               length=0.1, normalize=True, color="blue")
 
             # Plot the CoM
             self.ax.scatter(self.position[0],
@@ -412,6 +430,7 @@ class TensegrityDrone(object):
 
         # Set plot ranges and labels
         ax[3].set_ylim((0.5, 12.5))
+        ax[3].grid(axis="y")
         ax[3].set_yticks([i + 1 for i in range(12)])
         ax[3].set_yticklabels([fr'$v_{{{i+1}}}$' for i in range(12)])
         ax[3].set_xlabel(r't [$s$]')
