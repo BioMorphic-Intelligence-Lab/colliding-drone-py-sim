@@ -1,4 +1,5 @@
 import numpy as np 
+from enum import Enum
 from scipy.spatial.transform import Rotation as R
 
 class Controller(object):
@@ -108,7 +109,8 @@ class Controller(object):
 
    def angular_vel_ctrl(self, ang_vel: np.array, ang_vel_des: np.array,
                         time_constant=np.array([0.04, 0.04, 0.14]),
-                        i=np.array([6.21e-4, 9.62e-4, 9.22e-4])) -> np.array:
+                        i=np.array([6.21e-4, 9.62e-4, 9.22e-4]),
+                        feed_forward=np.zeros(3)) -> np.array:
       """Function that takes the current and desired angular velocity and outputs
          the body torques needed to achieve it. """
       ang_vel_error = (ang_vel_des - ang_vel)
@@ -116,7 +118,7 @@ class Controller(object):
       inertia = np.diag(i)
       nonlinear_corr = np.cross(ang_vel, (inertia @ ang_vel))
       
-      return inertia @ des_accel + nonlinear_corr
+      return inertia @ (des_accel + feed_forward) + nonlinear_corr
       
    def motor_forces_from_torques(self, torques: np.array, tot_thrust: float,
                                  prop=[0.0525, 0.040], yd=0.009975,
@@ -161,10 +163,10 @@ class Controller(object):
       # Return the motor speeds for the above
       return self.motor_speeds_from_forces(
                         self.motor_forces_from_torques(
-                           torques=self.angular_vel_ctrl(x[9:12], 
-                                          self.attitude_ctrl(x[3:6],
-                                                      des_attitude.as_euler("xyz"))
-                                          ),
+                              torques=self.angular_vel_ctrl(x[9:12], 
+                                             self.attitude_ctrl(x[3:6],
+                                                         des_attitude.as_euler("xyz"))
+                                             ),
                               tot_thrust=tot_thrust                                        
                            )
                         )
@@ -194,4 +196,115 @@ class CollisionRecoveryController(Controller):
          self.collision_occured = True
          return super().u(x, self.new_ref, np.zeros(3), yaw_des)
       else:
+         return super().u(x,x_des,v_des,yaw_des)
+
+class TorqueBasedCollisionRecoveryController(Controller):
+
+   class State(Enum):
+      POSITION_CTRL = 0
+      RECOVERING = 1
+
+   def __init__(self, drone) -> None:
+      super().__init__()
+      self.drone = drone
+      self.state = self.State.POSITION_CTRL
+      self.new_ref = np.zeros(3)
+
+   def reset(self):
+      self.state = self.State.POSITION_CTRL
+      self.new_ref = np.zeros(3)
+
+   def find_feed_forward(self, x, in_contact):
+      feed_forward_torque = np.zeros(3)
+
+      feed_forward_torque += np.array([10, 0, 0], dtype=float)
+
+      return feed_forward_torque
+   
+   def attitude_ctrl_with_ff(self, x: np.array, att_des: np.array, ff=0.0,
+                             m=0.315, g=9.81):
+      att = x[3:6]
+      ang_vel = x[9:12]
+      ang_vel_des = super().attitude_ctrl(att, att_des)
+
+      # Find Total Thrust in order to maintain altitude
+      total_thrust = m * g
+      # this ensures that we always produce the required z-acceleration (up to some maximum)
+      MIN_THRUST_CORR_FAC = 1.00
+      thrustCorrFactor = (R.from_euler(seq="xyz", angles=att).apply([0, 0, 1]))[2]
+      thrustCorrFactorSaturated = ((thrustCorrFactor <  MIN_THRUST_CORR_FAC) * MIN_THRUST_CORR_FAC 
+                                 + (thrustCorrFactor >= MIN_THRUST_CORR_FAC) * thrustCorrFactor)
+      totalNormThrust = total_thrust / thrustCorrFactorSaturated
+     
+      return self.motor_speeds_from_forces(
+                        self.motor_forces_from_torques(
+                              torques=self.angular_vel_ctrl(
+                                             ang_vel=ang_vel, 
+                                             ang_vel_des=ang_vel_des,
+                                             feed_forward=ff),
+                              tot_thrust=totalNormThrust                                        
+                           )
+                        )
+   
+   def find_target_attitude(self, in_contact: np.array) -> np.array:
+      attitude = np.zeros(3)
+
+      attitude += np.array([np.deg2rad(0), 0, 0])
+
+      return attitude
+
+   def u(self, x, x_des, v_des, yaw_des, m=0.315, g=9.81):
+
+      # Find current position of vertices
+      rot = R.from_euler(seq="xyz", angles=x[3:6])
+      vertices = rot.apply(self.drone.vertices_nominal) + x[0:3]
+
+      # Find which vertices are in contact
+      in_contact = self.drone.is_in_contact(vertices)
+
+      # Check if we are in contact at all
+      if in_contact.any():
+         # Find the feed forward term
+         feed_forward_term = self.find_feed_forward(x, in_contact)
+
+         # Compute Target Attitude
+         self.new_ref = self.find_target_attitude(in_contact)
+
+         # We're now in the state of recovering
+         self.state = self.State.RECOVERING
+
+         # Return control action Attitude Control + Feed Forward
+         return self.attitude_ctrl_with_ff(x=x, att_des=self.new_ref,
+                                           ff=feed_forward_term)
+
+      # We're not in immediate contact, but are still recovering
+      elif self.state == self.State.RECOVERING:
+
+         # If the angular velocity falls under a threshold 
+         # We have recovered and can go back to position control
+         if np.linalg.norm(x[9:12]) < np.deg2rad(1):
+            self.state = self.State.POSITION_CTRL
+            return self.attitude_ctrl_with_ff(x=x, att_des=[0, 0, 0])
+         # Otherwise keep attitude control
+         else:
+            # Find Total Thrust in order to maintain altitude
+            total_thrust = m * g
+            # this ensures that we always produce the required z-acceleration (up to some maximum)
+            MIN_THRUST_CORR_FAC = 1.00
+            thrustCorrFactor = (R.from_euler(seq="xyz", angles=x[3:6]).apply([0, 0, 1]))[2]
+            thrustCorrFactorSaturated = ((thrustCorrFactor <  MIN_THRUST_CORR_FAC) * MIN_THRUST_CORR_FAC 
+                                       + (thrustCorrFactor >= MIN_THRUST_CORR_FAC) * thrustCorrFactor)
+            totalNormThrust = total_thrust / thrustCorrFactorSaturated
+         
+            return self.motor_speeds_from_forces(
+                              self.motor_forces_from_torques(
+                                    torques=self.angular_vel_ctrl(x[9:12], 
+                                                   self.attitude_ctrl(x[3:6], att_des=self.new_ref)),
+                                    tot_thrust=totalNormThrust                                        
+                                 )
+                              )
+
+      # We're not in contact and aren't recovering
+      else:
+         # Simply do position control
          return super().u(x,x_des,v_des,yaw_des)

@@ -1,7 +1,7 @@
 import numpy as np
 
 from tensegrity_drone import TensegrityDrone
-from controller import CollisionRecoveryController
+from controller import TorqueBasedCollisionRecoveryController
 from misc import *
 
 def main():
@@ -12,20 +12,20 @@ def main():
     # Init drone objet and define desired attitude
     drone = TensegrityDrone(plot=True, angles=[0.0, 0, 0],
                             p = [0,0,0],
-                            barrier_loc=[0.0, 3.0, 1.0],
+                            barrier_loc=[0.0, 4.0, 1.0],
                             barrier_sidelength=[4.0, 2.0, 4.0],
                             barrier_orientation=np.deg2rad([0, 0, 0]),
                             n=[0,-1,0])
     
     # Init Controller
-    controller = CollisionRecoveryController(drone)
+    controller = TorqueBasedCollisionRecoveryController(drone)
 
     t_end = 3.0
     speed = 2 # meters per second
     des_p = lambda t: np.array([0.0,
                                 speed * t,
                                 1])
-    des_v = lambda t: np.array([0, 0, 0])
+    des_v = lambda t: np.array([0, speed, 0])
     des_yaw = lambda t:np.deg2rad(0)
 
     # Set control law
