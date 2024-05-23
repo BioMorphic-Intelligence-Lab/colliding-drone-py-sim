@@ -2,6 +2,9 @@ import numpy as np
 from scipy.spatial.transform import Rotation as R
 from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.pyplot as plt
+import matplotlib as mpl
+mpl.rcParams['text.usetex'] = True
+mpl.rcParams['text.latex.preamble'] = [r'\usepackage{amsmath}']
 
 from rectoid import plot_rectoid
 
@@ -14,7 +17,7 @@ class TensegrityDrone(object):
                  barrier_orientation=[0, 0, 0],
                  n = [0, -1, 0],
                  # Spring and damping coefficients for contact dynamics
-                 k=10000.0, damp=100.0,
+                 k=10000.0, damp=2000.0,
                  plot=False) -> None:
 
         # Pose
@@ -35,7 +38,7 @@ class TensegrityDrone(object):
 
         # Inertial parameters
         self.m = m         # total mass
-        self.I = np.array(I)   # Diagonal elements of the inertia tensor of a flat (square) plate      
+        self.I = np.diag(I)   # Diagonal elements of the inertia tensor of a flat (square) plate      
         
         # Length of rods
         self.l = l
@@ -66,19 +69,20 @@ class TensegrityDrone(object):
               f"Distance should be {l} but is {np.linalg.norm(self.vertices[2]-self.vertices[3])}"
 
         # Locations of propellers w.r.t. the centroid
-        self.propllers_nominal = np.array([
+        self.propellers_nominal = np.array([
             [ 0.0525,  0.040, 0.0],
             [ 0.0525, -0.040, 0.0],
             [-0.0525,  0.040, 0.0],
             [-0.0525, -0.040, 0.0]
         ])
-        self.propellers =  self.orientation.apply(self.propllers_nominal) + self.position
+        self.propellers =  self.orientation.apply(self.propellers_nominal) + self.position
 
         # The resulting mapping matrix for rotational accelerations
-        self.rotational_acc_mat = np.array([[-0.25 * l / self.I[0], 0.25 * l / self.I[0], 0.25 * l / self.I[0], -0.25 * l / self.I[0]], # roll
-                                            [-0.25 * l / self.I[1], 0.25 * l / self.I[1], -0.25 * l / self.I[1], 0.25 * l / self.I[1]], # pitch
-                                            [- yd / self.I[2], -yd / self.I[2],  yd / self.I[2],  yd / self.I[2]]  # yaw
-                                            ])
+        self.rotational_acc_mat = (np.linalg.inv(self.I) @
+                                    np.array([[-0.25 * l, 0.25 * l, 0.25 * l, -0.25 * l], # roll
+                                              [-0.25 * l, 0.25 * l, -0.25 * l, 0.25 * l], # pitch
+                                              [- yd, -yd,  yd,  yd]  # yaw
+                                            ]))
 
         # Strings indeces (for visualization only)
         self.strings = [ 
@@ -150,7 +154,7 @@ class TensegrityDrone(object):
             tau_ext = self.get_contact_wrench(x)
 
             # Add external forces and torques contribution
-            x_ddot += np.concatenate((tau_ext[0:3] / self.m, tau_ext[3:6] / self.I))
+            x_ddot += np.concatenate((tau_ext[0:3] / self.m, np.linalg.inv(self.I) @ tau_ext[3:6]))
 
         return x_ddot
 
@@ -159,7 +163,7 @@ class TensegrityDrone(object):
         self.orientation = R.from_euler("xyz", p[3:6])
 
         self.vertices = self.orientation.apply(self.vertices_nominal) + self.position
-        self.propellers = self.orientation.apply(self.propllers_nominal) + self.position
+        self.propellers = self.orientation.apply(self.propellers_nominal) + self.position
 
         self.position_hist = np.append(self.position_hist, [self.position], axis=0)
 
@@ -188,7 +192,8 @@ class TensegrityDrone(object):
             vel[i,:] += x[6:9]
 
             # Add the rotational contribution
-            vel[i, :] += orientation.apply(x[9:12] * self.vertices_nominal[idx, :])
+            vel[i, :] += np.cross(x[9:12], 
+                                  orientation.apply(self.vertices_nominal[idx, :]))
 
         return vel
 
@@ -217,8 +222,9 @@ class TensegrityDrone(object):
                "More velocities extracted that vertices are in contact!"
 
         # Compute and add the wrench contribution for each one
+        scale = 1.0 / max(len(in_contact_idx), 1)
         for i, idx in enumerate(in_contact_idx):
-            wrench +=  self.get_contact_wrench_by_vertex(x, vertices[idx],
+            wrench +=  scale * self.get_contact_wrench_by_vertex(x, vertices[idx],
                                                          vertex_velocities[i])
 
         return wrench
@@ -230,10 +236,14 @@ class TensegrityDrone(object):
 
         # Get the impact force at the vertex
         force = self.get_contact_force(vertex, vertex_velocity)
+        
+        # Compute the torque resulting on the body
+        torque = np.cross(vertex - x[0:3], force)
 
         # Concatenate to full 6d wrench
         wrench = np.concatenate((force,
-                                 np.cross(vertex - x[0:3], force)))
+                                 torque
+                                 ))
 
         return wrench
 
@@ -242,14 +252,14 @@ class TensegrityDrone(object):
             that is in contact """
         # Find the current penetration depth
         penetration_depth = np.dot(self.n, vertex) - self.d
-        # Find the current penetration speed, we only do damping
-        # on the way in, ergo saturate
-        penetration_speed = min([np.dot(self.n, vertex_speed), 0])
+        # Find the current penetration speed
+        # (both ways to simulate loss of energy)
+        penetration_speed = np.dot(self.n, vertex_speed)
 
         # Initialize force vector
         f = np.zeros(3)
 
-        # Sanity check, we should not be in contact when this is called
+        # Sanity check, we should be in contact when this is called
         if penetration_depth > 0:
             raise Warning("Contact force requested when vertex is not in contact!")
         else:
@@ -380,34 +390,50 @@ class TensegrityDrone(object):
         return angle
 
     def plot_trajectory(self, t, x,
-                        name, u=lambda t, x: np.zeros(4),
-                        downsample=1.0) -> None:
+                        name,
+                        u=lambda t, x: np.zeros(4),
+                        downsample=1.0,
+                        pred=None,
+                        controller=None) -> None:
         # Find downsampling step
         step = int(1.0 / downsample)
-        ## Plot x versus t
+        
+        # Plot x versus t
         fig = plt.figure()
         ax = fig.subplots(4, sharex=True)
-        ax[0].plot(t[0:-1:step], x[0:-1:step, 0:3])
+        ax[0].plot(t[0:-1:step], x[0:-1:step, 0], label=r"$x$")
+        ax[0].plot(t[0:-1:step], x[0:-1:step, 1], label=r"$y$")
+        ax[0].plot(t[0:-1:step], x[0:-1:step, 2], label=r"$z$")
         ax[0].set_ylabel(r'Position [$m$]')
-        ax[0].legend([r"$x$",r"$y$",r"$z$"], ncol=3, loc="upper right")
+        ax[0].legend(ncol=3, loc="upper right")
         ax2 = ax[0].twinx()
-        ax2.plot(t[0:-1:step], x[0:-1:step, 6:9], "--")
+        ax2.plot(t[0:-1:step], x[0:-1:step, 6],
+                 label=r"$\dot{x}$", linestyle="--")
+        ax2.plot(t[0:-1:step], x[0:-1:step, 7],
+                 label=r"$\dot{y}$", linestyle="--")
+        ax2.plot(t[0:-1:step], x[0:-1:step, 8],
+                 label=r"$\dot{z}$", linestyle="--")
         ax2.set_ylabel(r'Velocity [$m / s$]')
-        ax2.legend([r"$\dot{x}$",r"$\dot{y}$",r"$\dot{z}$"],
-                   ncol=3, loc="lower right")
         
         ax[1].plot(t[0:-1:step],
-                   np.rad2deg(self.bring_angle_to_range(x[0:-1:step, 3:6])))
+                   np.rad2deg(self.bring_angle_to_range(x[0:-1:step, 3])),
+                   label=r"$\phi$")
+        ax[1].plot(t[0:-1:step],
+                   np.rad2deg(self.bring_angle_to_range(x[0:-1:step, 4])),
+                   label=r"$\theta$")
+        ax[1].plot(t[0:-1:step],
+                   np.rad2deg(self.bring_angle_to_range(x[0:-1:step, 5])),
+                   label=r"$\psi$")
         ax[1].set_ylabel(r'Orientation [$^\circ$]')
-        ax[1].legend([
-                r"$\phi$",r"$\theta$",r"$\psi$",
-                ], ncol=3, loc="upper right")
+        ax[1].legend(ncol=3, loc="upper right")
         ax3 = ax[1].twinx()
-        ax3.plot(t[0:-1:step], np.rad2deg(x[0:-1:step, 9:12]), "--")
+        ax3.plot(t[0:-1:step], np.rad2deg(x[0:-1:step, 9]), "--",
+                 label=r"$\dot{\phi}$")
+        ax3.plot(t[0:-1:step], np.rad2deg(x[0:-1:step, 10]), "--",
+                 label=r"$\dot{\theta}$")
+        ax3.plot(t[0:-1:step], np.rad2deg(x[0:-1:step, 11]), "--",
+                 label=r"$\dot{\psi}$")
         ax3.set_ylabel(r'Angular Vel [$^\circ / s$]')
-        ax3.legend([
-                r"$\dot{\phi}$",r"$\dot{\theta}$",r"$\dot{\psi}$"
-                ], ncol=3, loc="lower right")
         
         ctrl = np.zeros([len(t), 4])
         for i in range(len(ctrl)):
@@ -422,14 +448,60 @@ class TensegrityDrone(object):
         if (not self.barrier_loc.size == 0
             and not self.barrier_sidelength.size == 0):
 
+            # First index of contact initialization
+            contact_idx = np.nan
+
             # Find which vertices are in contact
             in_contact = np.array(len(t) * [12 * [True]])
             for i in range(len(x)):
                 rot = R.from_euler(seq="xyz", angles=x[i, 3:6])
                 vertices = rot.apply(self.vertices_nominal) + x[i, 0:3]
                 in_contact[i, :] = self.is_in_contact(vertices)
+
+                if np.isnan(contact_idx) and in_contact[i,:].any():
+                    contact_idx = i
+
+            if (not np.isnan(contact_idx)) and pred is not None:
+
+                # Reset Controller
+                if controller is not None:
+                    controller.reset()
+
+                # Find velocity prediction after contact
+                t_contact = t[contact_idx-1:]
+                vel_pred = np.zeros([len(t_contact), 6])
+                vel_pred[0,: ] = np.concatenate(
+                    (x[contact_idx-1,6:9], x[contact_idx-1,9:12]))
+
+                # Iterate over time since collision and find the
+                #  velocity Prediction
+                for i in range(1, len(t_contact)):
+                    delta_prediction = pred(x[contact_idx + i-2, 0:6],
+                                            x[contact_idx + i-2, 6:12],
+                                            ctrl[contact_idx + i-1,:],
+                                            in_contact[contact_idx + i-1, :],
+                                            dt=t_contact[i]-t_contact[i-1])
+                    vel_pred[i, :] = (vel_pred[i-1, :] 
+                                      + delta_prediction)
+                
+                ax2.plot(t_contact, vel_pred[:, 0], color="blue",
+                           linestyle=":", label=r"$\dot{x}_{{pred}}$")
+                ax2.plot(t_contact, vel_pred[:, 1], color="orange",
+                           linestyle=":", label=r"$\dot{y}_{{pred}}$")
+                ax2.plot(t_contact, vel_pred[:, 2], color="green",
+                           linestyle=":", label=r"$\dot{z}_{{pred}}$")
+                ax3.plot(t_contact, vel_pred[:, 3], color="blue",
+                           linestyle=":", label=r"$\dot{\phi}_{{pred}}$")
+                ax3.plot(t_contact, vel_pred[:, 4], color="orange",
+                           linestyle=":",label=r"$\dot{\theta}_{{pred}}$")
+                ax3.plot(t_contact, vel_pred[:, 5], color="green",
+                           linestyle=":", label=r"$\dot{\psi}_{{pred}}$")
         else:
             in_contact = np.array(len(t) * [12 * [False]])
+
+        # Do legends for velocities after we plotted the prediction
+        ax2.legend(ncol=3, loc="lower right")
+        ax3.legend(ncol=3, loc="lower right")
 
         for i in range(12):
             time = t[in_contact[:, i]]
@@ -445,7 +517,7 @@ class TensegrityDrone(object):
         # Save the figure
         fig.set_size_inches((5, 10))
         plt.savefig(name, bbox_inches='tight', dpi=500)
-
+        
     def set_limits(self, xlim: tuple, ylim: tuple, zlim: tuple) -> None:
         self.ax.set_xlim(xlim[0], xlim[1])
         self.ax.set_ylim(ylim[0], ylim[1])
