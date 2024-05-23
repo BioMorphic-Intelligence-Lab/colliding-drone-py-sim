@@ -203,12 +203,14 @@ class TorqueBasedCollisionRecoveryController(Controller):
    class State(Enum):
       POSITION_CTRL = 0
       RECOVERING = 1
+      HOVER = 2
 
    def __init__(self, drone) -> None:
       super().__init__()
       self.drone = drone
       self.state = self.State.POSITION_CTRL
       self.new_ref = np.zeros(3)
+      self.new_p_ref = np.zeros(3)
 
    def reset(self):
       self.state = self.State.POSITION_CTRL
@@ -249,7 +251,7 @@ class TorqueBasedCollisionRecoveryController(Controller):
    def find_target_attitude(self, in_contact: np.array) -> np.array:
       attitude = np.zeros(3)
 
-      attitude += np.array([np.deg2rad(0), 0, 0])
+      attitude += np.array([np.deg2rad(5), 0, 0])
 
       return attitude
 
@@ -270,6 +272,9 @@ class TorqueBasedCollisionRecoveryController(Controller):
          # Compute Target Attitude
          self.new_ref = self.find_target_attitude(in_contact)
 
+         # Compute Hover position
+         self.new_p_ref = x[0:3] - np.array([0, 0.25, 0])
+
          # We're now in the state of recovering
          self.state = self.State.RECOVERING
 
@@ -283,7 +288,7 @@ class TorqueBasedCollisionRecoveryController(Controller):
          # If the angular velocity falls under a threshold 
          # We have recovered and can go back to position control
          if np.linalg.norm(x[9:12]) < np.deg2rad(1):
-            self.state = self.State.POSITION_CTRL
+            self.state = self.State.HOVER
             return self.attitude_ctrl_with_ff(x=x, att_des=[0, 0, 0])
          # Otherwise keep attitude control
          else:
@@ -304,7 +309,110 @@ class TorqueBasedCollisionRecoveryController(Controller):
                                  )
                               )
 
+      elif self.state == self.State.HOVER:
+         return super().u(x, self.new_p_ref, np.zeros(3), 0)
       # We're not in contact and aren't recovering
       else:
          # Simply do position control
+         return super().u(x,x_des,v_des,yaw_des)
+      
+class VelocityPredictionRecoveryController(Controller):
+   def __init__(self, drone) -> None:
+      super().__init__()
+      self.drone = drone
+      self.collision_occured = False
+      self.new_ref = np.zeros(3)
+
+   def reset(self):
+      self.collision_occured = False
+
+   def predict_delta_vel(self, x, v, u, in_contact, dt,
+                   e=0.8, # coefficient of restitution
+                   g=9.81):
+      
+      # Find the rotation matrix of the drone
+      rot = R.from_euler(seq="xyz", angles=x[3:6])
+
+      # Find the linear velocity vector in the body frame
+      v_b = rot.apply(v[0:3])
+
+      # We ignore all contact points that are not in the 
+      # the direction of travel
+      if v_b[0] <= 0: 
+         # Traveling in negative x
+         in_contact[1] = False
+         in_contact[3] = False
+      else:
+         # Traveling in positive x
+         in_contact[0] = False
+         in_contact[2] = False
+             
+      if v_b[1] <= 0:
+         # Traveling in negaitve y
+         in_contact[5] = False
+         in_contact[7] = False
+      else:
+         # Traveling in positive y
+         in_contact[4] = False
+         in_contact[6] = False
+      
+
+      delta_vel = np.array([0, 0, -g * dt, 0, 0, 0], dtype=float)
+      if in_contact.any():
+         scale = 1.0 / np.sum(1 * in_contact)
+         normal = np.array([0, -1, 0], dtype=float)
+         inv_I = np.linalg.inv(self.drone.I)
+         for i in range(len(in_contact)):
+            if in_contact[i]:
+               if not self.collision_occured:
+                  r = rot.apply(self.drone.vertices_nominal[i])
+                  rel_vel = np.dot(normal,
+                                   v[0:3] + np.cross(v[3:6], r))
+                  
+                  j = (-(1 + e) * rel_vel
+                        / (1.0 / self.drone.m 
+                           + np.dot(normal,
+                                    inv_I @ np.cross(np.cross(r, normal),
+                                                     r)
+                                    )
+                           )
+                     )
+
+                  delta_lin_vel = scale * j / self.drone.m * normal
+                  delta_rot_vel = scale * inv_I @ (j * np.cross(r, normal))
+
+                  delta_vel += np.concatenate((
+                     delta_lin_vel,
+                     delta_rot_vel)
+                  )
+               else:
+                  delta_vel += np.concatenate((
+                     [0, 0, 0],
+                     [0, 0, 0])
+                  )
+         
+         self.collision_occured = True
+      else:
+         if self.collision_occured:
+            self.collision_occured = False
+
+         delta_vel += np.concatenate((
+                  [0, 0, 0],
+                  [0, 0, 0])
+               )
+      return delta_vel
+
+   def u(self, t, x, x_des, v_des, yaw_des):
+      # Find current position of vertices
+      rot = R.from_euler(seq="xyz", angles=x[3:6])
+      vertices = rot.apply(self.drone.vertices_nominal) + x[0:3]
+
+      # Find which vertices are in contact
+      in_contact = self.drone.is_in_contact(vertices)
+
+      if in_contact.any() or self.collision_occured:
+         
+         self.collision_occured = True
+         return np.zeros(4)
+      else:
          return super().u(x,x_des,v_des,yaw_des)
