@@ -20,7 +20,7 @@ def main():
     # Init Controller
     controller = TorqueBasedCollisionRecoveryController(drone)
 
-    t_end = 3.0
+    t_end = 5.0
     speed = 2 # meters per second
     des_p = lambda t: np.array([0.0,
                                 speed * t,
