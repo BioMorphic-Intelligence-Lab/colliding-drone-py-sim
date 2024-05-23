@@ -19,16 +19,20 @@ def add_po() -> dict:
     return options
 
 def run(options, f, x0, t, drone, controller, ctrl, des_p,
-        speed_factor, downsample, max_step=0.001):
+        speed_factor, downsample, max_step=0.001,
+        pred=None):
     if options.load_path != "":
-        r = np.loadtxt(options.load_path)
+        print("Load Data...")
+        r = np.load(options.load_path)
         t = r[0, :]
         x = r[1:, :]
+        print("... done!")
     else:
         ## Set up the ODE object
         print("Solve ode ...")
         r = scipy.integrate.solve_ivp(f, (0, t[-1]), x0, method='BDF',
-                                    t_eval=t, max_step=max_step)
+                                    t_eval=t,
+                                    max_step=max_step)
         print("... done!")
 
         t = r.t
@@ -36,13 +40,14 @@ def run(options, f, x0, t, drone, controller, ctrl, des_p,
 
     if options.save_path != "":
         traj = np.concatenate(([t], x), axis=0)
-        np.savetxt(options.save_path, traj)
+        np.save(options.save_path, traj)
 
     if options.plot_path != "":
         if controller is not None:
             controller.reset()
         drone.plot_trajectory(t, x.T, options.plot_path, u=ctrl,
-                              downsample=downsample)
+                              downsample=downsample, pred=pred,
+                              controller=controller) 
 
     if options.anim_path != "":
         ## Animate
