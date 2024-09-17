@@ -1,12 +1,27 @@
 import numpy as np
 from scipy.spatial.transform import Rotation as R
 from mpl_toolkits.mplot3d import Axes3D
+from mpl_toolkits.mplot3d import art3d
+import matplotlib
+from matplotlib.patches import Circle
+from cylinder import plot_cylinder
+from curved3darrow import draw_curved_arrow
 import matplotlib.pyplot as plt
+import matplotlib.image as mpimg
 import matplotlib as mpl
-mpl.rcParams['text.usetex'] = True
-mpl.rcParams['text.latex.preamble'] = [r'\usepackage{amsmath}']
+
+plt.rcParams['text.usetex'] = True
+font = {'family' : 'normal',
+        'weight' : 'bold',
+        'size'   : 85}
+
+matplotlib.rc('font', **font)
+mpl.rcParams['text.latex.preamble'] = [r'\usepackage{amsmath, amssymb, dsfont}']
+
+delft_blue="#00A6D6"
 
 from rectoid import plot_rectoid
+
 
 class TensegrityDrone(object):
 
@@ -70,10 +85,10 @@ class TensegrityDrone(object):
 
         # Locations of propellers w.r.t. the centroid
         self.propellers_nominal = np.array([
-            [ 0.0525,  0.040, 0.0],
             [ 0.0525, -0.040, 0.0],
+            [-0.0525, -0.040, 0.0],
             [-0.0525,  0.040, 0.0],
-            [-0.0525, -0.040, 0.0]
+            [ 0.0525,  0.040, 0.0]
         ])
         self.propellers =  self.orientation.apply(self.propellers_nominal) + self.position
 
@@ -273,24 +288,46 @@ class TensegrityDrone(object):
                               x_des=np.array([])) -> None:
 
             self.ax.clear()
+            self.ax.view_init(azim=-50, elev=30)
 
-            # Plot body axis
             if axis:
+                # Plot body axis
                 self.ax.quiver(self.position[0],
                                self.position[1],
                                self.position[2],
                                1, 0, 0,
-                               length=0.1, normalize=True, color="red")
+                               length=0.025, normalize=True, color="red",
+                               arrow_length_ratio=0.1)
                 self.ax.quiver(self.position[0],
                                self.position[1],
                                self.position[2],
                                0, 1, 0,
-                               length=0.1, normalize=True, color="green")
+                               length=0.025, normalize=True, color="green",
+                               arrow_length_ratio=0.1)
                 self.ax.quiver(self.position[0],
                                self.position[1],
                                self.position[2],
                                0, 0, 1,
-                               length=0.1, normalize=True, color="blue")
+                               length=0.025, normalize=True, color="blue",
+                               arrow_length_ratio=0.1)
+                
+                self.ax.text(-0.015, -0.015, -0.01, r"$\mathcal{B}$", size=55, zorder=100)
+                
+                # Plot World Axes
+                self.ax.quiver(-0.1, -0.1, -0.1,
+                               1, 0, 0,
+                               length=0.1, normalize=True, color="red",
+                               arrow_length_ratio=0.1)
+                self.ax.quiver(-0.1, -0.1, -0.1,
+                               0, 1, 0,
+                               length=0.1, normalize=True, color="green",
+                               arrow_length_ratio=0.1)
+                self.ax.quiver(-0.1, -0.1, -0.1,
+                               0, 0, 1,
+                               length=0.1, normalize=True, color="blue",
+                               arrow_length_ratio=0.1)
+                
+                self.ax.text(-0.1 + 0.025, -0.1 + 0.015, -0.11, r"$\mathcal{W}$", size=55)
 
             # Plot the CoM
             self.ax.scatter(self.position[0],
@@ -298,15 +335,15 @@ class TensegrityDrone(object):
                             self.position[2], 
                             s=45, alpha=0.75,
                             color="black")
-            self.ax.text(self.position[0]+0.01,
-                        self.position[1]+0.01,
-                        self.position[2]+0.01,
-                        f"CoM")
+            #self.ax.text(self.position[0]+0.01,
+            #            self.position[1]+0.01,
+            #            self.position[2]+0.01,
+            #            r"$0$")
 
             # Plot Timestamp
-            self.ax.text(-0.1,-0.1,-0.1,
-                         f"Time: {t: .2f} s",
-                         fontsize=15)
+            #self.ax.text(-0.1,-0.1,-0.1,
+            #             f"Time: {t: .2f} s",
+            #             fontsize=15)
 
             # Plot Reference Position if give
             if x_des.size != 0:
@@ -320,7 +357,55 @@ class TensegrityDrone(object):
 
                 # Plot the barriers if the list is not empty
                 plot_rectoid(self.ax, self.barrier_loc, self.barrier_sidelength, rot=self.barrier_orientation,
-                            facecolors='xkcd:grey', edgecolor="black", alpha=0.5)
+                            facecolors='xkcd:grey', edgecolor="black", alpha=0.1, zorder=0)
+                normal_loc = self.barrier_loc + np.array([0, -self.barrier_sidelength[1], 0.05])
+                
+                # Normal direction
+                self.ax.quiver(
+                    normal_loc[0], normal_loc[1], normal_loc[2],
+                    0, -1, 0,
+                    length=0.03, normalize=True, color="black",
+                    linewidth=4,
+                    arrow_length_ratio=0.2, zorder=100)
+                self.ax.text(normal_loc[0] - 0.005, 
+                             normal_loc[1] - 0.03, 
+                             normal_loc[2] + 0.01,
+                             r"$\hat{\mathbf{n}}$", size=45, zorder=100)
+                
+                # Tangential direction
+                self.ax.quiver(
+                    normal_loc[0], normal_loc[1], normal_loc[2],
+                    1, 0, 0,
+                    length=0.03, normalize=True, color="black",
+                    linewidth=4,
+                    arrow_length_ratio=0.2, zorder=100)
+                self.ax.text(normal_loc[0] + 0.03, 
+                             normal_loc[1] - 0.005, 
+                             normal_loc[2] + 0.01,
+                             r"$\hat{\mathbf{t}}$", size=45, zorder=100)
+                
+                # Acting Impulses
+                self.ax.quiver(self.vertices[7, 0],
+                               self.vertices[7, 1],
+                               self.vertices[7, 2],
+                               1.0, -1, 0.0, length=0.03, normalize=True, color="orange",
+                                linewidth=3,
+                                arrow_length_ratio=0.2, zorder=100)
+                self.ax.text(self.vertices[7, 0] + 0.03,
+                             self.vertices[7, 1] - 0.03,
+                             self.vertices[7, 2],
+                             r"$\mathbf{j}_{8}$", color="orange", size=45, zorder=100)
+                
+                self.ax.quiver(self.vertices[5, 0],
+                               self.vertices[5, 1],
+                               self.vertices[5, 2],
+                               1.0, -1, 0.0, length=0.03, normalize=True, color="orange",
+                                linewidth=3,
+                                arrow_length_ratio=0.2, zorder=100)
+                self.ax.text(self.vertices[5, 0] + 0.03,
+                             self.vertices[5, 1] - 0.03,
+                             self.vertices[5, 2],
+                             r"$\mathbf{j}_{6}$", color="orange", size=45, zorder=100)
 
                 # Find which vertices are in contact
                 in_contact = self.is_in_contact(self.vertices)
@@ -331,16 +416,17 @@ class TensegrityDrone(object):
             # the color base on contact
             self.ax.scatter(self.vertices[in_contact,0],
                             self.vertices[in_contact,1],
-                            self.vertices[in_contact,2], color="orange")
+                            self.vertices[in_contact,2], color="orange", zorder=100)
             self.ax.scatter(self.vertices[~in_contact,0],
                             self.vertices[~in_contact,1],
-                            self.vertices[~in_contact,2], color="blue")
+                            self.vertices[~in_contact,2], color="white",
+                            s=50, zorder=100)
 
             for i in range(len(self.vertices)):
-                self.ax.text(self.vertices[i, 0], 
-                            self.vertices[i, 1], 
-                            self.vertices[i, 2], 
-                            rf"$v_{{{i+1}}}$")
+                self.ax.text(self.vertices[i, 0] + 0.005, 
+                            self.vertices[i, 1] + 0.005, 
+                            self.vertices[i, 2] + 0.005, 
+                            rf"$v_{{{i+1}}}$", size=35, zorder=100)
                 
             # Plot the trajectory of the CoM
             self.ax.plot(self.position_hist[:, 0],
@@ -349,34 +435,59 @@ class TensegrityDrone(object):
 
             # Plot the Propellors
             for i in range(len(self.propellers)):
-                tau = np.linspace(-np.pi, np.pi, 25)
-                circle = self.orientation.apply(np.array([self.r * np.sin(tau),
-                                                        self.r * np.cos(tau),
-                                                        np.zeros_like(tau)]).T) \
-                            + self.propellers[i, :]
-                self.ax.plot(circle[:, 0],
-                             circle[:, 1],
-                             circle[:, 2], color="red")
+                plot_cylinder(self.ax, self.propellers[i, :], self.r, 0.01, self.orientation, color=delft_blue, alpha=0.5, zorder=50, antialiased=False)
+
+                self.ax.quiver(self.propellers[i, 0], 
+                               self.propellers[i, 1], 
+                               self.propellers[i, 2] + 0.005,
+                               0, 0, 1,
+                               length=0.025, normalize=True, color="black",
+                               linewidth=3,
+                               arrow_length_ratio=0.2, zorder=100)
+                self.ax.text(self.propellers[i, 0] - 0.005, 
+                             self.propellers[i, 1] - 0.005, 
+                             self.propellers[i, 2] + 0.04,
+                             rf"$f_{i+1}$", size=45, zorder=100)
+                
+                if i % 2 == 0:
+                    draw_curved_arrow(self.ax,
+                                    self.propellers[i, :] + np.array([0, 0, 0.02]),
+                                    0.01, R.identity().as_matrix(),
+                                    3*np.pi / 2, 0, color="black", linewidth=4, zorder=110)
+                else: 
+                    draw_curved_arrow(self.ax,
+                                    self.propellers[i, :] + np.array([0, 0, 0.02]),
+                                    0.01, R.identity().as_matrix(),
+                                    0, 3*np.pi / 2, color="black", linewidth=4, zorder=110)
+                self.ax.text(self.propellers[i, 0] + 0.03, 
+                             self.propellers[i, 1] - 0.02, 
+                             self.propellers[i, 2] + 0.02,
+                             rf"$\tau_{i+1}$", size=45, zorder=100)
+                
+                
 
             # Plot the carbon fibre rods
             for i in range(0, 11, 2):
                 segment = np.array([self.vertices[i,:],self.vertices[i+1,:]])
                 self.ax.plot(segment[:,0],
                              segment[:,1],
-                             segment[:,2], color="black")
+                             segment[:,2], color="black", alpha=0.75)
 
             # Plot the strings
             for idx in self.strings:
                 string = np.array([self.vertices[idx[0],:], self.vertices[idx[1], :]])
                 self.ax.plot(string[:,0],
                             string[:,1],
-                            string[:,2], color="grey")
+                            string[:,2], color="grey", alpha=0.5, linestyle="--")
 
             # Set labels
-            self.ax.set_xlabel(f"x [m]")
-            self.ax.set_ylabel(f"y [m]")
-            self.ax.set_zlabel(f"z [m]")
-
+            self.ax.set_xticks([])
+            self.ax.set_yticks([])
+            self.ax.set_zticks([])
+            self.ax.xaxis.set_pane_color((1.0, 1.0, 1.0, 0.0))
+            self.ax.yaxis.set_pane_color((1.0, 1.0, 1.0, 0.0))
+            self.ax.zaxis.set_pane_color((1.0, 1.0, 1.0, 0.0))
+            self.ax.set_axis_off()
             # For equal aspect ratio
             self.ax.set_box_aspect([ub - lb for lb, ub in (getattr(self.ax, f'get_{a}lim')() for a in 'xyz')])
 
@@ -523,8 +634,9 @@ class TensegrityDrone(object):
         self.ax.set_ylim(ylim[0], ylim[1])
         self.ax.set_zlim(zlim[0], zlim[1])
         
-    def save(self, name: str) -> None:
-        self.fig.savefig(name)
+    def save(self, name: str, **kwargs) -> None:
+        self.fig.set_size_inches(kwargs.get('size',(15, 15)))
+        self.fig.savefig(name, **kwargs)
 
     def show(self) -> None:
         plt.show()

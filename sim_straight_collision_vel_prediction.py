@@ -9,8 +9,8 @@ def main():
     # Add program options
     options = add_po()
 
-    #options.load_path = "./python_sim/data/straight_collision_velocity_prediction.npy"
-    options.save_path = "./python_sim/data/straight_collision_velocity_prediction.npy"
+    options.load_path = "./python_sim/data/straight_collision_velocity_prediction.npy"
+    #options.save_path = "./python_sim/data/straight_collision_velocity_prediction.npy"
     options.plot_path = "./python_sim/plots/straight_collision_velocity_prediction.png"
 
     # Init drone objet and define desired attitude

@@ -331,7 +331,7 @@ class VelocityPredictionRecoveryController(Controller):
                    g=9.81):
       
       # Find the rotation matrix of the drone
-      rot = R.from_euler(seq="xyz", angles=x[3:6])
+      rot = R.from_euler(seq="xyz", angles=np.deg2rad([45, 0, 0]))
 
       # Find the linear velocity vector in the body frame
       v_b = rot.apply(v[0:3])
@@ -369,21 +369,14 @@ class VelocityPredictionRecoveryController(Controller):
                   rel_vel = np.dot(normal,
                                    v[0:3] + np.cross(v[3:6], r))
                   
-                  j = (-(1 + e) * rel_vel
-                        / (1.0 / self.drone.m 
-                           + np.dot(normal,
-                                    inv_I @ np.cross(np.cross(r, normal),
-                                                     r)
-                                    )
-                           )
-                     )
+                  delta_rel_vel = -(1 + e) * rel_vel
 
-                  delta_lin_vel = scale * j / self.drone.m * normal
-                  delta_rot_vel = scale * inv_I @ (j * np.cross(r, normal))
+                  delta_lin_vel = delta_rel_vel * normal
+                  delta_rot_vel = np.cross(r, delta_lin_vel)
 
                   delta_vel += np.concatenate((
-                     delta_lin_vel,
-                     delta_rot_vel)
+                     scale * delta_lin_vel,
+                     scale * delta_rot_vel)
                   )
                else:
                   delta_vel += np.concatenate((
